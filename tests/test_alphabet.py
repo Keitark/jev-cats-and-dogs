@@ -9,10 +9,12 @@ from alphabet_ascii import (
     validate_grid,
 )
 from alphabet_benchmark import (
+    CHARACTER_PAIRS,
     blank_ascii,
     build_payload,
     shuffle_ascii_preserve_ink,
     summarize_blank_control,
+    summarize_character_control,
     summarize_shuffle_control,
     summarize_translation_control,
     validate_probabilities,
@@ -200,6 +202,86 @@ class AlphabetTests(unittest.TestCase):
                 for row in summary["heatmaps"]["H"]["p_source"]
             )
         )
+
+    def test_character_pairs_are_visible_ascii_and_do_not_use_target_letters(self):
+        self.assertEqual(len(CHARACTER_PAIRS), 6)
+        for name, ink, background in CHARACTER_PAIRS:
+            self.assertTrue(name)
+            self.assertEqual(len(ink), 1)
+            self.assertEqual(len(background), 1)
+            self.assertNotEqual(ink, background)
+            self.assertTrue(ink.isascii())
+            self.assertTrue(background.isascii())
+            self.assertNotIn(ink, TRANSLATION_LETTERS)
+            self.assertNotIn(background, TRANSLATION_LETTERS)
+
+    def test_character_control_has_exactly_18_calls(self):
+        self.assertEqual(
+            len(CHARACTER_PAIRS) * len(TRANSLATION_LETTERS),
+            18,
+        )
+
+    def test_positioned_renderer_supports_alternate_characters(self):
+        art = render_segment8_positioned_ascii(
+            "H",
+            x=8,
+            y=8,
+            on="@",
+            off=".",
+        )
+        validate_grid(art, 32, 32)
+        self.assertEqual(set(art.replace("\n", "")), {"@", "."})
+
+        numeric = render_segment8_positioned_ascii(
+            "T",
+            x=8,
+            y=8,
+            on="1",
+            off="0",
+        )
+        validate_grid(numeric, 32, 32)
+        self.assertEqual(set(numeric.replace("\n", "")), {"1", "0"})
+
+    def test_payload_describes_selected_character_mapping(self):
+        art = render_segment8_positioned_ascii(
+            "L",
+            x=8,
+            y=8,
+            on="+",
+            off="-",
+        )
+        payload = build_payload(
+            art,
+            32,
+            32,
+            backend="jev",
+            ink_char="+",
+            background_char="-",
+        )
+        self.assertIn("'+' means dark/ink", payload["state"])
+        self.assertIn("'-' means background", payload["state"])
+        self.assertTrue(payload["state"].endswith(art))
+
+    def test_character_summary_groups_pairs_and_letters(self):
+        rows = []
+        for pair_name, ink, background in CHARACTER_PAIRS:
+            for letter in TRANSLATION_LETTERS:
+                rows.append(
+                    {
+                        "pair_name": pair_name,
+                        "source_letter": letter,
+                        "predicted": letter,
+                        "correct": True,
+                        "p_source": 0.5,
+                        "latency_ms": 100.0,
+                        "error": "",
+                    }
+                )
+        summary = summarize_character_control(rows)
+        self.assertEqual(summary["valid_calls"], 18)
+        self.assertEqual(summary["correct"], 18)
+        self.assertEqual(len(summary["per_pair"]), 6)
+        self.assertEqual(summary["per_letter"]["H"]["valid_calls"], 6)
 
     def test_payload_has_exactly_26_letter_choices(self):
         art, _ = render_letter_ascii("G", 17)

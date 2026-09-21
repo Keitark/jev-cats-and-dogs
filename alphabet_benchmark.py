@@ -16,7 +16,15 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-from alphabet_ascii import LETTERS, STYLES, render_letter_ascii, validate_grid
+from alphabet_ascii import (
+    LETTERS,
+    STYLES,
+    TRANSLATION_LETTERS,
+    TRANSLATION_POSITIONS,
+    render_letter_ascii,
+    render_segment8_positioned_ascii,
+    validate_grid,
+)
 
 
 class ProviderError(RuntimeError):
@@ -344,6 +352,234 @@ def run_shuffle_control(args: argparse.Namespace) -> None:
     print(f"summary: {summary_path}")
 
 
+def summarize_translation_control(rows: list[dict]) -> dict:
+    valid = [row for row in rows if not row["error"]]
+    total = len(valid)
+    correct = sum(bool(row["correct"]) for row in valid)
+    prediction_counter = Counter(row["predicted"] for row in valid)
+    prediction_counts = {
+        letter: prediction_counter.get(letter, 0)
+        for letter in LETTERS
+    }
+
+    per_letter = {}
+    heatmaps = {}
+    for letter in TRANSLATION_LETTERS:
+        subset = [
+            row for row in valid
+            if row["source_letter"] == letter
+        ]
+        letter_correct = sum(bool(row["correct"]) for row in subset)
+        per_letter[letter] = {
+            "valid_calls": len(subset),
+            "correct": letter_correct,
+            "accuracy": (
+                letter_correct / len(subset)
+                if subset
+                else 0.0
+            ),
+            "mean_p_source": (
+                statistics.fmean(float(row["p_source"]) for row in subset)
+                if subset
+                else None
+            ),
+        }
+
+        by_position = {
+            (int(row["x"]), int(row["y"])): row
+            for row in subset
+        }
+        p_source_grid = []
+        correct_grid = []
+        predicted_grid = []
+        for y_value in TRANSLATION_POSITIONS:
+            p_row = []
+            c_row = []
+            prediction_row = []
+            for x_value in TRANSLATION_POSITIONS:
+                row = by_position.get((x_value, y_value))
+                if row is None:
+                    p_row.append(None)
+                    c_row.append(None)
+                    prediction_row.append(None)
+                else:
+                    p_row.append(float(row["p_source"]))
+                    c_row.append(1 if row["correct"] else 0)
+                    prediction_row.append(row["predicted"])
+            p_source_grid.append(p_row)
+            correct_grid.append(c_row)
+            predicted_grid.append(prediction_row)
+
+        heatmaps[letter] = {
+            "x_positions": list(TRANSLATION_POSITIONS),
+            "y_positions": list(TRANSLATION_POSITIONS),
+            "p_source": p_source_grid,
+            "correct": correct_grid,
+            "predicted": predicted_grid,
+        }
+
+    return {
+        "control": "translation_hlt",
+        "letters": list(TRANSLATION_LETTERS),
+        "positions": list(TRANSLATION_POSITIONS),
+        "canvas_size": 32,
+        "glyph_size": 16,
+        "valid_calls": total,
+        "errors": len(rows) - total,
+        "correct": correct,
+        "accuracy": correct / total if total else 0.0,
+        "chance_baseline": 1 / 26,
+        "mean_p_source": (
+            statistics.fmean(float(row["p_source"]) for row in valid)
+            if valid
+            else None
+        ),
+        "mean_latency_ms": (
+            statistics.fmean(float(row["latency_ms"]) for row in valid)
+            if valid
+            else None
+        ),
+        "prediction_counts": prediction_counts,
+        "per_letter": per_letter,
+        "heatmaps": heatmaps,
+    }
+
+
+def run_translation_control(args: argparse.Namespace) -> None:
+    rows: list[dict] = []
+    fieldnames = [
+        "source_letter",
+        "x",
+        "y",
+        "glyph_size",
+        "ink_count",
+        "input_sha256",
+        "predicted",
+        "correct",
+        "p_source",
+        "p_H",
+        "p_L",
+        "p_T",
+        "confidence",
+        "latency_ms",
+        *[f"p_{letter}" for letter in LETTERS],
+        "error",
+    ]
+
+    total = (
+        len(TRANSLATION_LETTERS)
+        * len(TRANSLATION_POSITIONS)
+        * len(TRANSLATION_POSITIONS)
+    )
+    call_index = 0
+
+    for source_letter in TRANSLATION_LETTERS:
+        for y_value in TRANSLATION_POSITIONS:
+            for x_value in TRANSLATION_POSITIONS:
+                call_index += 1
+                art = render_segment8_positioned_ascii(
+                    source_letter,
+                    x=x_value,
+                    y=y_value,
+                    canvas_size=32,
+                    glyph_size=16,
+                )
+                input_sha = hashlib.sha256(
+                    art.encode("utf-8")
+                ).hexdigest()
+                ink_count = art.replace("\n", "").count("#")
+
+                row = {
+                    "source_letter": source_letter,
+                    "x": x_value,
+                    "y": y_value,
+                    "glyph_size": 16,
+                    "ink_count": ink_count,
+                    "input_sha256": input_sha,
+                    "predicted": "",
+                    "correct": False,
+                    "p_source": "",
+                    "p_H": "",
+                    "p_L": "",
+                    "p_T": "",
+                    "confidence": "",
+                    "latency_ms": "",
+                    **{f"p_{letter}": "" for letter in LETTERS},
+                    "error": "",
+                }
+
+                print(
+                    f"[{call_index:02d}/{total:02d}] "
+                    f"source={source_letter} x={x_value} y={y_value}",
+                    end="",
+                    flush=True,
+                )
+                try:
+                    choice, probabilities, confidence, latency = classify(
+                        art,
+                        32,
+                        32,
+                        backend=args.backend,
+                    )
+                    row.update(
+                        {
+                            "predicted": choice,
+                            "correct": choice == source_letter,
+                            "p_source": probabilities[source_letter],
+                            "p_H": probabilities["H"],
+                            "p_L": probabilities["L"],
+                            "p_T": probabilities["T"],
+                            "confidence": (
+                                ""
+                                if confidence is None
+                                else confidence
+                            ),
+                            "latency_ms": latency,
+                            **{
+                                f"p_{letter}": probabilities[letter]
+                                for letter in LETTERS
+                            },
+                        }
+                    )
+                    print(
+                        f" -> {choice} "
+                        f"p(source)={probabilities[source_letter]:.3f}"
+                    )
+                except ProviderError as exc:
+                    row["error"] = str(exc)
+                    print(f" ERROR: {exc}")
+                rows.append(row)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    summary = summarize_translation_control(rows)
+    summary_path = args.output.with_suffix(".summary.json")
+    summary_path.write_text(
+        json.dumps(summary, indent=2),
+        encoding="utf-8",
+    )
+
+    print()
+    print(
+        f"accuracy: {summary['accuracy']:.3%} "
+        f"({summary['correct']}/{summary['valid_calls']})"
+    )
+    for letter in TRANSLATION_LETTERS:
+        item = summary["per_letter"][letter]
+        print(
+            f"{letter}: {item['accuracy']:.3%} "
+            f"({item['correct']}/{item['valid_calls']}) "
+            f"mean p(source)={item['mean_p_source']:.4f}"
+        )
+    print(f"mean p(source): {summary['mean_p_source']:.4f}")
+    print(f"CSV: {args.output}")
+    print(f"summary: {summary_path}")
+
+
 def _entropy_bits(counts: dict[str, int], total: int) -> float:
     if total <= 0:
         return 0.0
@@ -519,6 +755,11 @@ def main() -> None:
         action="store_true",
         help="shuffle ideal glyph pixels while preserving each letter's # count",
     )
+    parser.add_argument(
+        "--translation-control",
+        action="store_true",
+        help="scan fixed 16x16 H/L/T glyphs over a 5x5 position grid",
+    )
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument(
         "--backend", choices=("jev", "openrouter"), default="jev"
@@ -537,12 +778,20 @@ def main() -> None:
         parser.error("--blank-control cannot be combined with --ideal")
     if args.shuffle_control and args.ideal:
         parser.error("--shuffle-control cannot be combined with --ideal")
-    if args.blank_control and args.shuffle_control:
-        parser.error("--blank-control cannot be combined with --shuffle-control")
+    if args.translation_control and args.ideal:
+        parser.error("--translation-control cannot be combined with --ideal")
+    if sum((
+        args.blank_control,
+        args.shuffle_control,
+        args.translation_control,
+    )) > 1:
+        parser.error("choose only one control mode")
     if args.blank_control and (args.width, args.height) != (32, 32):
         parser.error("--blank-control requires the strict 32x32 grid")
     if args.shuffle_control and (args.width, args.height) != (32, 32):
         parser.error("--shuffle-control requires the strict 32x32 grid")
+    if args.translation_control and (args.width, args.height) != (32, 32):
+        parser.error("--translation-control requires the strict 32x32 grid")
     if args.ideal and args.style != "segment8":
         parser.error("--ideal requires --style segment8")
     if args.ideal and args.variants_per_letter != 1:
@@ -556,6 +805,9 @@ def main() -> None:
         return
     if args.shuffle_control:
         run_shuffle_control(args)
+        return
+    if args.translation_control:
+        run_translation_control(args)
         return
 
     rows: list[dict] = []

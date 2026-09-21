@@ -17,20 +17,16 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - name: Download sample photos
+      - name: Download simple illustrations
         run: |
-          mkdir -p /tmp/jev-samples
-          curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/2/28/Kittyplya03042006.JPG" -o /tmp/jev-samples/cat1.jpg
-          curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/c/c0/Reclining_black_dog.jpg" -o /tmp/jev-samples/dog1.jpg
-          curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/5/52/Cat_November_2010-1a_%28cropped_2023%29.jpg" -o /tmp/jev-samples/cat2.jpg
-      - name: Render pencil sketch ASCII
+          mkdir -p /tmp/jev-illustrations
+          curl -L --fail --retry 3 "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f431.png" -o /tmp/jev-illustrations/cat_face.png
+          curl -L --fail --retry 3 "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f436.png" -o /tmp/jev-illustrations/dog_face.png
+          curl -L --fail --retry 3 "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f408.png" -o /tmp/jev-illustrations/cat_body.png
+          curl -L --fail --retry 3 "https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f415.png" -o /tmp/jev-illustrations/dog_body.png
+      - name: Render illustration ASCII
         run: |
-          python preview_ascii.py /tmp/jev-samples/cat1.jpg --mode pencil-magic --width 64 --height 64 > /tmp/cat1.txt
-          python preview_ascii.py /tmp/jev-samples/dog1.jpg --mode pencil-magic --width 64 --height 64 > /tmp/dog1.txt
-          python preview_ascii.py /tmp/jev-samples/cat2.jpg --mode pencil-magic --width 64 --height 64 > /tmp/cat2.txt
-          echo "===== CAT1 ====="
-          cat /tmp/cat1.txt
-          echo "===== DOG1 ====="
-          cat /tmp/dog1.txt
-          echo "===== CAT2 ====="
-          cat /tmp/cat2.txt
+          for f in cat_face dog_face cat_body dog_body; do
+            echo "===== $f ====="
+            python preview_ascii.py "/tmp/jev-illustrations/$f.png" --mode plain --width 32 --height 32 --chars "@#*:."
+          done

@@ -26,6 +26,17 @@ def _load_image(image_or_path: Image.Image | str | Path) -> Image.Image:
         return image.copy()
 
 
+def _flatten_on_white(image: Image.Image) -> Image.Image:
+    image = ImageOps.exif_transpose(image)
+    if image.mode in ("RGBA", "LA") or (
+        image.mode == "P" and "transparency" in image.info
+    ):
+        rgba = image.convert("RGBA")
+        background = Image.new("RGBA", rgba.size, "white")
+        image = Image.alpha_composite(background, rgba)
+    return image.convert("RGB")
+
+
 def prepare_square_rgb(
     image_or_path: Image.Image | str | Path,
     side: int,
@@ -33,7 +44,7 @@ def prepare_square_rgb(
     if side < 1:
         raise ValueError("side must be positive")
 
-    image = ImageOps.exif_transpose(_load_image(image_or_path)).convert("RGB")
+    image = _flatten_on_white(_load_image(image_or_path))
     return ImageOps.fit(
         image,
         (side, side),
@@ -52,7 +63,7 @@ def prepare_image(
     if width < 1 or height < 1:
         raise ValueError("width and height must be positive")
 
-    image = ImageOps.exif_transpose(image).convert("RGB")
+    image = _flatten_on_white(image)
     fitted = ImageOps.fit(
         image,
         (width, height),

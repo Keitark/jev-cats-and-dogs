@@ -23,25 +23,14 @@ jobs:
           curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/2/28/Kittyplya03042006.JPG" -o /tmp/jev-samples/cat1.jpg
           curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/c/c0/Reclining_black_dog.jpg" -o /tmp/jev-samples/dog1.jpg
           curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/5/52/Cat_November_2010-1a_%28cropped_2023%29.jpg" -o /tmp/jev-samples/cat2.jpg
-      - name: Render binary edge ASCII
+      - name: Render pencil sketch ASCII
         run: |
-          python - <<'PY'
-          from PIL import Image, ImageFilter, ImageOps
-          samples = [
-              ("CAT1", "/tmp/jev-samples/cat1.jpg"),
-              ("DOG1", "/tmp/jev-samples/dog1.jpg"),
-              ("CAT2", "/tmp/jev-samples/cat2.jpg"),
-          ]
-          for name, path in samples:
-              with Image.open(path) as im:
-                  im = ImageOps.fit(ImageOps.exif_transpose(im).convert("L"), (512,512), method=Image.Resampling.LANCZOS)
-                  im = ImageOps.autocontrast(im, cutoff=1).filter(ImageFilter.GaussianBlur(1.2))
-                  edge = ImageOps.autocontrast(im.filter(ImageFilter.FIND_EDGES), cutoff=1)
-                  line = edge.point(lambda p: 0 if p > 80 else 255, mode="1").convert("L")
-                  small = line.resize((64,64), Image.Resampling.LANCZOS).point(lambda p: 0 if p < 200 else 255, mode="1")
-                  print(f"===== {name} =====")
-                  pixels = list(small.getdata())
-                  for y in range(64):
-                      row = pixels[y*64:(y+1)*64]
-                      print("".join("#" if p == 0 else " " for p in row))
-          PY
+          python preview_ascii.py /tmp/jev-samples/cat1.jpg --mode pencil-magic --width 64 --height 64 > /tmp/cat1.txt
+          python preview_ascii.py /tmp/jev-samples/dog1.jpg --mode pencil-magic --width 64 --height 64 > /tmp/dog1.txt
+          python preview_ascii.py /tmp/jev-samples/cat2.jpg --mode pencil-magic --width 64 --height 64 > /tmp/cat2.txt
+          echo "===== CAT1 ====="
+          cat /tmp/cat1.txt
+          echo "===== DOG1 ====="
+          cat /tmp/dog1.txt
+          echo "===== CAT2 ====="
+          cat /tmp/cat2.txt

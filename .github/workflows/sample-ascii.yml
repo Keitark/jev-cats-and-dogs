@@ -23,14 +23,21 @@ jobs:
           curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/2/28/Kittyplya03042006.JPG" -o /tmp/jev-samples/cat1.jpg
           curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/c/c0/Reclining_black_dog.jpg" -o /tmp/jev-samples/dog1.jpg
           curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/5/52/Cat_November_2010-1a_%28cropped_2023%29.jpg" -o /tmp/jev-samples/cat2.jpg
-      - name: Render lineart ASCII
+      - name: Scan FIND_EDGES thresholds
         run: |
-          python preview_ascii.py /tmp/jev-samples/cat1.jpg --mode lineart-magic --width 64 --height 64 --line-threshold 245 --line-width 3 --chars "# " > /tmp/cat1.txt
-          python preview_ascii.py /tmp/jev-samples/dog1.jpg --mode lineart-magic --width 64 --height 64 --line-threshold 245 --line-width 3 --chars "# " > /tmp/dog1.txt
-          python preview_ascii.py /tmp/jev-samples/cat2.jpg --mode lineart-magic --width 64 --height 64 --line-threshold 245 --line-width 3 --chars "# " > /tmp/cat2.txt
-          echo "===== CAT1 ====="
-          cat /tmp/cat1.txt
-          echo "===== DOG1 ====="
-          cat /tmp/dog1.txt
-          echo "===== CAT2 ====="
-          cat /tmp/cat2.txt
+          python - <<'PY'
+          from PIL import Image, ImageFilter, ImageOps
+          paths = ["/tmp/jev-samples/cat1.jpg", "/tmp/jev-samples/dog1.jpg", "/tmp/jev-samples/cat2.jpg"]
+          for path in paths:
+              with Image.open(path) as im:
+                  im = ImageOps.fit(ImageOps.exif_transpose(im).convert("L"), (512,512), method=Image.Resampling.LANCZOS)
+                  im = ImageOps.autocontrast(im, cutoff=1).filter(ImageFilter.GaussianBlur(1.2))
+                  edge = ImageOps.autocontrast(im.filter(ImageFilter.FIND_EDGES), cutoff=1)
+                  print(path)
+                  for t in [20, 30, 40, 50, 60, 80, 100, 120]:
+                      line = edge.point(lambda p, t=t: 0 if p > t else 255, mode="1").convert("L")
+                      line = line.filter(ImageFilter.MinFilter(3))
+                      small = line.resize((64,64), Image.Resampling.LANCZOS).point(lambda p: 0 if p < 200 else 255, mode="1")
+                      ink = sum(1 for p in small.getdata() if p == 0) / 4096
+                      print(t, f"{ink:.3f}")
+          PY

@@ -11,6 +11,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 LETTERS = tuple(string.ascii_uppercase)
 DEFAULT_SIZE = 32
 STYLES = ("font", "segment8")
+TRANSLATION_LETTERS = ("H", "L", "T")
+TRANSLATION_POSITIONS = (0, 4, 8, 12, 16)
 
 # An 8x8 LED/dot-matrix alphabet.  The one-cell strokes and surrounding
 # whitespace make the glyphs much easier to inspect than the tiny fallback
@@ -195,6 +197,56 @@ def render_segment8_image(
     y = (canvas_size - glyph_size) // 2 + variant.shift_y
     image.paste(glyph, (x, y))
     return image
+
+
+def render_segment8_positioned_ascii(
+    letter: str,
+    *,
+    x: int,
+    y: int,
+    canvas_size: int = 32,
+    glyph_size: int = 16,
+    on: str = "#",
+    off: str = ".",
+) -> str:
+    """Render a fixed-size dot-matrix glyph at an explicit canvas position."""
+    if letter not in LETTERS:
+        raise ValueError("letter must be A-Z")
+    if canvas_size < 1 or glyph_size < 1:
+        raise ValueError("canvas_size and glyph_size must be positive")
+    if x < 0 or y < 0:
+        raise ValueError("x and y must be non-negative")
+    if x + glyph_size > canvas_size or y + glyph_size > canvas_size:
+        raise ValueError("glyph does not fit inside canvas")
+    if len(on) != 1 or len(off) != 1 or on == off:
+        raise ValueError("on/off must be distinct single characters")
+
+    pattern = SEGMENT8_PATTERNS[letter]
+    base = Image.new("L", (8, 8), 255)
+    base_pixels = base.load()
+    for row_index, row in enumerate(pattern):
+        for column_index, value in enumerate(row):
+            if value == "#":
+                base_pixels[column_index, row_index] = 0
+
+    glyph = base.resize(
+        (glyph_size, glyph_size),
+        Image.Resampling.NEAREST,
+    )
+    canvas = Image.new("L", (canvas_size, canvas_size), 255)
+    canvas.paste(glyph, (x, y))
+
+    pixels = list(canvas.getdata())
+    rows = []
+    for row_index in range(canvas_size):
+        row = pixels[
+            row_index * canvas_size : (row_index + 1) * canvas_size
+        ]
+        rows.append("".join(on if pixel < 128 else off for pixel in row))
+
+    art = "\n".join(rows)
+    validate_grid(art, canvas_size, canvas_size)
+    return art
 
 
 def image_to_binary_ascii(

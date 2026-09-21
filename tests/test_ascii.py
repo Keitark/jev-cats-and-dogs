@@ -35,7 +35,7 @@ class AsciiVisionTests(unittest.TestCase):
         animal = payload["questions"]["animal"]
         self.assertEqual(animal["type"], "choice")
         self.assertEqual(set(animal["criteria"]), {"cat", "dog"})
-        self.assertNotIn("filename", payload["state"].lower())
+        self.assertTrue(payload["state"].endswith(art))
 
     def test_probability_rounding_is_normalized(self):
         p = validate_probabilities({"cat": 0.50, "dog": 0.49})

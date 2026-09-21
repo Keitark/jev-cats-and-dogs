@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+
+data/raw/
+data/manifest.jsonl
+results/*.csv
+results/*.json

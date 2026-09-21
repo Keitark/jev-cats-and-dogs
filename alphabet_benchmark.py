@@ -27,6 +27,16 @@ from alphabet_ascii import (
 )
 
 
+CHARACTER_PAIRS = (
+    ("hash_dot", "#", "."),
+    ("at_dot", "@", "."),
+    ("star_dot", "*", "."),
+    ("plus_minus", "+", "-"),
+    ("one_zero", "1", "0"),
+    ("percent_underscore", "%", "_"),
+)
+
+
 class ProviderError(RuntimeError):
     pass
 
@@ -47,6 +57,8 @@ def build_payload(
     height: int,
     *,
     backend: str = "jev",
+    ink_char: str = "#",
+    background_char: str = ".",
 ) -> dict:
     validate_grid(art, width, height)
     model = (
@@ -63,7 +75,8 @@ def build_payload(
         "state": (
             "Identify the uppercase Latin alphabet glyph represented by the "
             f"{width} x {height} ASCII bitmap below.\n"
-            "'#' means dark/ink and '.' means background.\n"
+            f"'{ink_char}' means dark/ink and "
+            f"'{background_char}' means background.\n"
             "The glyph may use a different font, small rotation, scale, stroke "
             "thickness, or position shift.\n"
             "ASCII BITMAP:\n"
@@ -102,6 +115,8 @@ def classify(
     height: int,
     *,
     backend: str = "jev",
+    ink_char: str = "#",
+    background_char: str = ".",
 ) -> tuple[str, dict[str, float], float | None, float]:
     key = api_key(backend)
     if not key:
@@ -111,7 +126,14 @@ def classify(
         if backend == "jev"
         else "https://openrouter.ai/api/alpha/decisions"
     )
-    payload = build_payload(art, width, height, backend=backend)
+    payload = build_payload(
+        art,
+        width,
+        height,
+        backend=backend,
+        ink_char=ink_char,
+        background_char=background_char,
+    )
     timeout = float(os.getenv("MODEL_TIMEOUT", "30"))
     timeout = min(90, max(1, timeout)) if math.isfinite(timeout) else 30
 
@@ -580,6 +602,214 @@ def run_translation_control(args: argparse.Namespace) -> None:
     print(f"summary: {summary_path}")
 
 
+def summarize_character_control(rows: list[dict]) -> dict:
+    valid = [row for row in rows if not row["error"]]
+    total = len(valid)
+    correct = sum(bool(row["correct"]) for row in valid)
+    per_pair = {}
+    per_letter = {}
+
+    for pair_name, ink_char, background_char in CHARACTER_PAIRS:
+        subset = [row for row in valid if row["pair_name"] == pair_name]
+        pair_correct = sum(bool(row["correct"]) for row in subset)
+        per_pair[pair_name] = {
+            "ink_char": ink_char,
+            "background_char": background_char,
+            "valid_calls": len(subset),
+            "correct": pair_correct,
+            "accuracy": pair_correct / len(subset) if subset else 0.0,
+            "mean_p_source": (
+                statistics.fmean(float(row["p_source"]) for row in subset)
+                if subset
+                else None
+            ),
+            "predictions": {
+                row["source_letter"]: row["predicted"]
+                for row in subset
+            },
+        }
+
+    for letter in TRANSLATION_LETTERS:
+        subset = [
+            row for row in valid
+            if row["source_letter"] == letter
+        ]
+        letter_correct = sum(bool(row["correct"]) for row in subset)
+        per_letter[letter] = {
+            "valid_calls": len(subset),
+            "correct": letter_correct,
+            "accuracy": (
+                letter_correct / len(subset)
+                if subset
+                else 0.0
+            ),
+            "mean_p_source": (
+                statistics.fmean(float(row["p_source"]) for row in subset)
+                if subset
+                else None
+            ),
+        }
+
+    return {
+        "control": "character_encoding_hlt",
+        "letters": list(TRANSLATION_LETTERS),
+        "pairs": [
+            {
+                "name": name,
+                "ink_char": ink,
+                "background_char": background,
+            }
+            for name, ink, background in CHARACTER_PAIRS
+        ],
+        "canvas_size": 32,
+        "glyph_size": 16,
+        "x": 8,
+        "y": 8,
+        "valid_calls": total,
+        "errors": len(rows) - total,
+        "correct": correct,
+        "accuracy": correct / total if total else 0.0,
+        "mean_p_source": (
+            statistics.fmean(float(row["p_source"]) for row in valid)
+            if valid
+            else None
+        ),
+        "mean_latency_ms": (
+            statistics.fmean(float(row["latency_ms"]) for row in valid)
+            if valid
+            else None
+        ),
+        "per_pair": per_pair,
+        "per_letter": per_letter,
+    }
+
+
+def run_character_control(args: argparse.Namespace) -> None:
+    rows: list[dict] = []
+    fieldnames = [
+        "pair_name",
+        "ink_char",
+        "background_char",
+        "source_letter",
+        "x",
+        "y",
+        "glyph_size",
+        "input_sha256",
+        "predicted",
+        "correct",
+        "p_source",
+        "confidence",
+        "latency_ms",
+        *[f"p_{letter}" for letter in LETTERS],
+        "error",
+    ]
+
+    total = len(CHARACTER_PAIRS) * len(TRANSLATION_LETTERS)
+    call_index = 0
+
+    for pair_name, ink_char, background_char in CHARACTER_PAIRS:
+        for source_letter in TRANSLATION_LETTERS:
+            call_index += 1
+            art = render_segment8_positioned_ascii(
+                source_letter,
+                x=8,
+                y=8,
+                canvas_size=32,
+                glyph_size=16,
+                on=ink_char,
+                off=background_char,
+            )
+            input_sha = hashlib.sha256(
+                art.encode("utf-8")
+            ).hexdigest()
+
+            row = {
+                "pair_name": pair_name,
+                "ink_char": ink_char,
+                "background_char": background_char,
+                "source_letter": source_letter,
+                "x": 8,
+                "y": 8,
+                "glyph_size": 16,
+                "input_sha256": input_sha,
+                "predicted": "",
+                "correct": False,
+                "p_source": "",
+                "confidence": "",
+                "latency_ms": "",
+                **{f"p_{letter}": "" for letter in LETTERS},
+                "error": "",
+            }
+
+            print(
+                f"[{call_index:02d}/{total:02d}] "
+                f"pair={pair_name} source={source_letter}",
+                end="",
+                flush=True,
+            )
+            try:
+                choice, probabilities, confidence, latency = classify(
+                    art,
+                    32,
+                    32,
+                    backend=args.backend,
+                    ink_char=ink_char,
+                    background_char=background_char,
+                )
+                row.update(
+                    {
+                        "predicted": choice,
+                        "correct": choice == source_letter,
+                        "p_source": probabilities[source_letter],
+                        "confidence": (
+                            ""
+                            if confidence is None
+                            else confidence
+                        ),
+                        "latency_ms": latency,
+                        **{
+                            f"p_{letter}": probabilities[letter]
+                            for letter in LETTERS
+                        },
+                    }
+                )
+                print(
+                    f" -> {choice} "
+                    f"p(source)={probabilities[source_letter]:.3f}"
+                )
+            except ProviderError as exc:
+                row["error"] = str(exc)
+                print(f" ERROR: {exc}")
+            rows.append(row)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    summary = summarize_character_control(rows)
+    summary_path = args.output.with_suffix(".summary.json")
+    summary_path.write_text(
+        json.dumps(summary, indent=2),
+        encoding="utf-8",
+    )
+
+    print()
+    print(
+        f"accuracy: {summary['accuracy']:.3%} "
+        f"({summary['correct']}/{summary['valid_calls']})"
+    )
+    for pair_name, item in summary["per_pair"].items():
+        print(
+            f"{pair_name}: {item['accuracy']:.3%} "
+            f"({item['correct']}/{item['valid_calls']}) "
+            f"mean p(source)={item['mean_p_source']:.4f}"
+        )
+    print(f"CSV: {args.output}")
+    print(f"summary: {summary_path}")
+
+
 def _entropy_bits(counts: dict[str, int], total: int) -> float:
     if total <= 0:
         return 0.0
@@ -760,6 +990,11 @@ def main() -> None:
         action="store_true",
         help="scan fixed 16x16 H/L/T glyphs over a 5x5 position grid",
     )
+    parser.add_argument(
+        "--character-control",
+        action="store_true",
+        help="compare H/L/T using different foreground/background characters",
+    )
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument(
         "--backend", choices=("jev", "openrouter"), default="jev"
@@ -780,10 +1015,13 @@ def main() -> None:
         parser.error("--shuffle-control cannot be combined with --ideal")
     if args.translation_control and args.ideal:
         parser.error("--translation-control cannot be combined with --ideal")
+    if args.character_control and args.ideal:
+        parser.error("--character-control cannot be combined with --ideal")
     if sum((
         args.blank_control,
         args.shuffle_control,
         args.translation_control,
+        args.character_control,
     )) > 1:
         parser.error("choose only one control mode")
     if args.blank_control and (args.width, args.height) != (32, 32):
@@ -792,6 +1030,8 @@ def main() -> None:
         parser.error("--shuffle-control requires the strict 32x32 grid")
     if args.translation_control and (args.width, args.height) != (32, 32):
         parser.error("--translation-control requires the strict 32x32 grid")
+    if args.character_control and (args.width, args.height) != (32, 32):
+        parser.error("--character-control requires the strict 32x32 grid")
     if args.ideal and args.style != "segment8":
         parser.error("--ideal requires --style segment8")
     if args.ideal and args.variants_per_letter != 1:
@@ -808,6 +1048,9 @@ def main() -> None:
         return
     if args.translation_control:
         run_translation_control(args)
+        return
+    if args.character_control:
+        run_character_control(args)
         return
 
     rows: list[dict] = []

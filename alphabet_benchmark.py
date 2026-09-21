@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import statistics
 import string
 import time
@@ -160,6 +161,187 @@ def blank_ascii(width: int = 32, height: int = 32) -> str:
     art = "\n".join("." * width for _ in range(height))
     validate_grid(art, width, height)
     return art
+
+
+def shuffle_ascii_preserve_ink(
+    art: str,
+    *,
+    width: int = 32,
+    height: int = 32,
+    seed: int,
+) -> str:
+    """Destroy spatial structure while preserving the exact number of # cells."""
+    validate_grid(art, width, height)
+    flat = art.replace("\n", "")
+    ink_count = flat.count("#")
+    if set(flat) - {"#", "."}:
+        raise ValueError("shuffle control requires a binary #/. grid")
+
+    cells = ["#"] * ink_count + ["."] * (width * height - ink_count)
+    rng = random.Random(seed)
+    rng.shuffle(cells)
+    rows = [
+        "".join(cells[y * width : (y + 1) * width])
+        for y in range(height)
+    ]
+    shuffled = "\n".join(rows)
+    validate_grid(shuffled, width, height)
+    if shuffled.replace("\n", "").count("#") != ink_count:
+        raise AssertionError("shuffle changed ink count")
+    return shuffled
+
+
+def summarize_shuffle_control(rows: list[dict]) -> dict:
+    valid = [row for row in rows if not row["error"]]
+    counts = Counter(row["predicted"] for row in valid)
+    total = len(valid)
+    prediction_counts = {letter: counts.get(letter, 0) for letter in LETTERS}
+    retained = sum(row["predicted"] == row["source_letter"] for row in valid)
+    p_source = [float(row["p_source"]) for row in valid]
+    by_letter = {
+        row["source_letter"]: {
+            "predicted": row["predicted"],
+            "p_source": float(row["p_source"]),
+            "ink_count": int(row["ink_count"]),
+        }
+        for row in valid
+    }
+    return {
+        "control": "pixel_shuffle",
+        "valid_calls": total,
+        "errors": len(rows) - total,
+        "source_letter_retained": retained,
+        "source_letter_retention_rate": retained / total if total else 0.0,
+        "mean_p_source": statistics.fmean(p_source) if p_source else None,
+        "prediction_counts": prediction_counts,
+        "entropy_bits": _entropy_bits(prediction_counts, total),
+        "mean_latency_ms": (
+            statistics.fmean(float(row["latency_ms"]) for row in valid)
+            if valid
+            else None
+        ),
+        "per_source_letter": by_letter,
+    }
+
+
+def run_shuffle_control(args: argparse.Namespace) -> None:
+    rows: list[dict] = []
+    fieldnames = [
+        "source_letter",
+        "shuffle_seed",
+        "ink_count",
+        "ideal_sha256",
+        "shuffled_sha256",
+        "predicted",
+        "p_source",
+        "confidence",
+        "latency_ms",
+        *[f"p_{letter}" for letter in LETTERS],
+        "error",
+    ]
+
+    for letter_index, letter in enumerate(LETTERS):
+        ideal_art, _ = render_letter_ascii(
+            letter,
+            seed=0,
+            width=args.width,
+            height=args.height,
+            threshold=args.threshold,
+            style="segment8",
+            ideal=True,
+        )
+        shuffle_seed = args.seed + letter_index * 10007
+        shuffled_art = shuffle_ascii_preserve_ink(
+            ideal_art,
+            width=args.width,
+            height=args.height,
+            seed=shuffle_seed,
+        )
+        ink_count = ideal_art.replace("\n", "").count("#")
+        ideal_sha = hashlib.sha256(ideal_art.encode("utf-8")).hexdigest()
+        shuffled_sha = hashlib.sha256(shuffled_art.encode("utf-8")).hexdigest()
+
+        row = {
+            "source_letter": letter,
+            "shuffle_seed": shuffle_seed,
+            "ink_count": ink_count,
+            "ideal_sha256": ideal_sha,
+            "shuffled_sha256": shuffled_sha,
+            "predicted": "",
+            "p_source": "",
+            "confidence": "",
+            "latency_ms": "",
+            **{f"p_{value}": "" for value in LETTERS},
+            "error": "",
+        }
+
+        print(
+            f"[{letter_index + 1:02d}/26] shuffled source={letter} "
+            f"ink={ink_count}",
+            end="",
+            flush=True,
+        )
+        try:
+            choice, probabilities, confidence, latency = classify(
+                shuffled_art,
+                args.width,
+                args.height,
+                backend=args.backend,
+            )
+            row.update(
+                {
+                    "predicted": choice,
+                    "p_source": probabilities[letter],
+                    "confidence": "" if confidence is None else confidence,
+                    "latency_ms": latency,
+                    **{
+                        f"p_{value}": probabilities[value]
+                        for value in LETTERS
+                    },
+                }
+            )
+            print(f" -> {choice} p(source)={probabilities[letter]:.3f}")
+        except ProviderError as exc:
+            row["error"] = str(exc)
+            print(f" ERROR: {exc}")
+        rows.append(row)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    summary = summarize_shuffle_control(rows)
+    summary.update(
+        {
+            "width": args.width,
+            "height": args.height,
+            "seed": args.seed,
+            "ink_count_preserved": True,
+            "spatial_positions_shuffled": True,
+        }
+    )
+    summary_path = args.output.with_suffix(".summary.json")
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    print()
+    print(
+        "source-letter retention: "
+        f"{summary['source_letter_retained']}/{summary['valid_calls']} "
+        f"({summary['source_letter_retention_rate']:.3%})"
+    )
+    print(f"mean p(source): {summary['mean_p_source']:.4f}")
+    print(
+        "prediction counts: "
+        + " ".join(
+            f"{letter}={count}"
+            for letter, count in summary["prediction_counts"].items()
+            if count
+        )
+    )
+    print(f"CSV: {args.output}")
+    print(f"summary: {summary_path}")
 
 
 def _entropy_bits(counts: dict[str, int], total: int) -> float:
@@ -332,6 +514,11 @@ def main() -> None:
         action="store_true",
         help="repeat one identical all-dot bitmap and measure output prior",
     )
+    parser.add_argument(
+        "--shuffle-control",
+        action="store_true",
+        help="shuffle ideal glyph pixels while preserving each letter's # count",
+    )
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument(
         "--backend", choices=("jev", "openrouter"), default="jev"
@@ -348,8 +535,14 @@ def main() -> None:
         parser.error("--calls must be positive")
     if args.blank_control and args.ideal:
         parser.error("--blank-control cannot be combined with --ideal")
+    if args.shuffle_control and args.ideal:
+        parser.error("--shuffle-control cannot be combined with --ideal")
+    if args.blank_control and args.shuffle_control:
+        parser.error("--blank-control cannot be combined with --shuffle-control")
     if args.blank_control and (args.width, args.height) != (32, 32):
         parser.error("--blank-control requires the strict 32x32 grid")
+    if args.shuffle_control and (args.width, args.height) != (32, 32):
+        parser.error("--shuffle-control requires the strict 32x32 grid")
     if args.ideal and args.style != "segment8":
         parser.error("--ideal requires --style segment8")
     if args.ideal and args.variants_per_letter != 1:
@@ -360,6 +553,9 @@ def main() -> None:
     load_dotenv()
     if args.blank_control:
         run_blank_control(args)
+        return
+    if args.shuffle_control:
+        run_shuffle_control(args)
         return
 
     rows: list[dict] = []

@@ -12,6 +12,14 @@ image/glyph -> 32x32 bitmap -> '#' / '.' -> Jev -> A-Z choice
 
 Each sample varies font, small rotation, scale, stroke thickness, and position. No OCR label or filename is included in the state.
 
+For a clearer LED/dot-matrix style input, use the deterministic `segment8` renderer. It expands an 8x8 bitmap alphabet into the same strict 32x32 binary grid:
+
+~~~bash
+python preview_alphabet.py A --style segment8
+python alphabet_benchmark.py --style segment8 --variants-per-letter 5 --output results/jev_alphabet_segment8.csv
+python alphabet_benchmark.py --style segment8 --ideal --variants-per-letter 1 --output results/alphabet_segment8_ideal.csv
+~~~
+
 Preview one sample:
 
 ~~~bash
@@ -26,6 +34,8 @@ python alphabet_benchmark.py --variants-per-letter 5
 ~~~
 
 That produces 130 decisions by default (26 letters x 5 variants). Random chance is 1/26 = 3.85%.
+
+The tracked [segment8 benchmark report](results/alphabet_segment8_report.md) records the 22/130 (16.92%) varied run and the required 26-call ideal glyph baseline.
 
 The older cats/dogs work is retained below as an exploratory predecessor.
 

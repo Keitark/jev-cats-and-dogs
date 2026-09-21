@@ -25,9 +25,9 @@ jobs:
           curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/5/52/Cat_November_2010-1a_%28cropped_2023%29.jpg" -o /tmp/jev-samples/cat2.jpg
       - name: Render lineart ASCII
         run: |
-          python preview_ascii.py /tmp/jev-samples/cat1.jpg --mode lineart-magic --width 64 --height 64 > /tmp/cat1.txt
-          python preview_ascii.py /tmp/jev-samples/dog1.jpg --mode lineart-magic --width 64 --height 64 > /tmp/dog1.txt
-          python preview_ascii.py /tmp/jev-samples/cat2.jpg --mode lineart-magic --width 64 --height 64 > /tmp/cat2.txt
+          python preview_ascii.py /tmp/jev-samples/cat1.jpg --mode lineart-magic --width 64 --height 64 --line-threshold 245 --line-width 3 > /tmp/cat1.txt
+          python preview_ascii.py /tmp/jev-samples/dog1.jpg --mode lineart-magic --width 64 --height 64 --line-threshold 245 --line-width 3 > /tmp/dog1.txt
+          python preview_ascii.py /tmp/jev-samples/cat2.jpg --mode lineart-magic --width 64 --height 64 --line-threshold 245 --line-width 3 > /tmp/cat2.txt
           echo "===== CAT1 ====="
           cat /tmp/cat1.txt
           echo "===== DOG1 ====="

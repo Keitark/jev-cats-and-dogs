@@ -136,3 +136,19 @@ Actual -> predicted table:
 H, L, and T remained the strongest letters, with one correct prediction each. Notable confusions included C -> D, B/O/Q -> H, F/G/J/S -> K, and many other letters -> A.
 
 This run measures whether Jev can use spatial structure encoded as text under an idealized glyph condition, before robustness to perturbations is tested. It does not establish general OCR capability.
+
+
+## Next control: blank-input prior test
+
+The next run should measure Jev's output prior with no glyph information.
+
+Use one identical 32x32 bitmap containing only `.` characters and submit it 26 times with the same A-Z choice criteria.
+
+This is not an accuracy test because blank input has no ground-truth letter. Record the prediction histogram instead.
+
+Primary comparison:
+
+- ideal-glyph prediction counts: A=14, H=5, K=4, D=1, L=1, T=1;
+- blank-input prediction counts: to be measured.
+
+The main question is whether the A/H/K-heavy prediction distribution persists with no spatial signal. If L/T remain rare on blank input but are selected on their corresponding ideal glyphs, that would support a limited glyph-specific signal despite a strong output prior.

@@ -36,6 +36,27 @@ class AlphabetTests(unittest.TestCase):
         b, _ = render_letter_ascii("B", 99, style="segment8")
         self.assertNotEqual(a, b)
 
+    def test_ideal_segment8_is_deterministic_and_unperturbed(self):
+        art1, variant1 = render_letter_ascii(
+            "R", 17, style="segment8", ideal=True
+        )
+        art2, variant2 = render_letter_ascii(
+            "R", 9999, style="segment8", ideal=True
+        )
+        validate_grid(art1, 32, 32)
+        self.assertEqual(art1, art2)
+        for variant in (variant1, variant2):
+            self.assertTrue(variant.ideal)
+            self.assertEqual(variant.angle_deg, 0.0)
+            self.assertEqual(variant.scale, 1.0)
+            self.assertEqual(variant.shift_x, 0)
+            self.assertEqual(variant.shift_y, 0)
+            self.assertEqual(variant.thicken, 0)
+
+    def test_ideal_requires_segment8(self):
+        with self.assertRaises(ValueError):
+            render_letter_ascii("A", 17, ideal=True)
+
     def test_payload_has_exactly_26_letter_choices(self):
         art, _ = render_letter_ascii("G", 17)
         payload = build_payload(art, 32, 32, backend="jev")

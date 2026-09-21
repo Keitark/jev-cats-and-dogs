@@ -160,6 +160,11 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=32)
     parser.add_argument("--threshold", type=int, default=210)
     parser.add_argument("--style", choices=STYLES, default="font")
+    parser.add_argument(
+        "--ideal",
+        action="store_true",
+        help="use one fixed, centered segment8 glyph per letter",
+    )
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument(
         "--backend", choices=("jev", "openrouter"), default="jev"
@@ -172,6 +177,12 @@ def main() -> None:
     args = parser.parse_args()
     if args.variants_per_letter < 1:
         parser.error("--variants-per-letter must be positive")
+    if args.ideal and args.style != "segment8":
+        parser.error("--ideal requires --style segment8")
+    if args.ideal and args.variants_per_letter != 1:
+        parser.error("--ideal requires --variants-per-letter 1")
+    if args.ideal and (args.width, args.height) != (32, 32):
+        parser.error("--ideal requires the strict 32x32 grid")
 
     load_dotenv()
     rows: list[dict] = []
@@ -193,10 +204,12 @@ def main() -> None:
                 height=args.height,
                 threshold=args.threshold,
                 style=args.style,
+                ideal=args.ideal,
             )
             print(
                 f"[{count:03d}/{total:03d}] true={letter} "
-                f"style={variant.style} font={variant.font_name} "
+                f"style={variant.style} ideal={variant.ideal} "
+                f"font={variant.font_name} "
                 f"angle={variant.angle_deg:.1f}",
                 end="",
                 flush=True,
@@ -207,6 +220,7 @@ def main() -> None:
                 "variant": variant_index,
                 "seed": sample_seed,
                 "style": variant.style,
+                "ideal": variant.ideal,
                 "font": variant.font_name,
                 "angle_deg": variant.angle_deg,
                 "scale": variant.scale,
@@ -268,6 +282,7 @@ def main() -> None:
         "height": args.height,
         "threshold": args.threshold,
         "style": args.style,
+        "ideal": args.ideal,
         "variants_per_letter": args.variants_per_letter,
         "valid_calls": len(valid),
         "errors": len(rows) - len(valid),

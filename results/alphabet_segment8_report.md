@@ -72,3 +72,67 @@ The purpose is deliberately narrow:
 > How many idealized 8x8 uppercase glyphs can Jev identify from the 32x32 ASCII bitmap when no geometric nuisance variation is present?
 
 No translation, rotation, scale perturbation, pixel dropout, font variation, or combined robustness test should be added to this run.
+
+## Ideal glyph baseline
+
+Exact command:
+
+```powershell
+python alphabet_benchmark.py --style segment8 --ideal --variants-per-letter 1 --output results/alphabet_segment8_ideal.csv
+```
+
+Experimental condition:
+
+- one fixed `segment8` glyph for each uppercase letter A-Z;
+- fixed scale and centered placement;
+- rotation = 0 degrees;
+- `shift_x = 0`, `shift_y = 0`;
+- no thickening, dropout, noise, or font variation;
+- strict 32x32 binary ASCII bitmap;
+- exactly one Jev call per letter.
+
+Aggregate result:
+
+- valid calls: 26;
+- API errors: 0;
+- correct: 3/26;
+- accuracy: 11.54%;
+- 95% Wilson interval: 4.00% to 28.98%;
+- random baseline: 3.85%;
+- mean latency: 1,351 ms;
+- mean probability assigned to the correct letter: 0.0885.
+
+Actual -> predicted table:
+
+| Actual | Predicted | P(correct) |
+| --- | --- | ---: |
+| A | H | 0.170 |
+| B | H | 0.070 |
+| C | D | 0.020 |
+| D | A | 0.120 |
+| E | A | 0.030 |
+| F | K | 0.040 |
+| G | K | 0.030 |
+| H | H | 0.340 |
+| I | A | 0.000 |
+| J | K | 0.010 |
+| K | A | 0.110 |
+| L | L | 0.160 |
+| M | A | 0.130 |
+| N | A | 0.070 |
+| O | H | 0.120 |
+| P | A | 0.060 |
+| Q | H | 0.020 |
+| R | A | 0.070 |
+| S | K | 0.030 |
+| T | T | 0.230 |
+| U | A | 0.120 |
+| V | A | 0.060 |
+| W | A | 0.070 |
+| X | A | 0.070 |
+| Y | A | 0.120 |
+| Z | A | 0.030 |
+
+H, L, and T remained the strongest letters, with one correct prediction each. Notable confusions included C -> D, B/O/Q -> H, F/G/J/S -> K, and many other letters -> A.
+
+This run measures whether Jev can use spatial structure encoded as text under an idealized glyph condition, before robustness to perturbations is tested. It does not establish general OCR capability.

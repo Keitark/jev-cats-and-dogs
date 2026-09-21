@@ -66,6 +66,7 @@ class LetterVariant:
     shift_x: int
     shift_y: int
     thicken: int
+    ideal: bool = False
 
 
 def available_fonts() -> list[str]:
@@ -85,13 +86,34 @@ def _font(name: str, size: int) -> ImageFont.ImageFont:
     return ImageFont.truetype(name, size)
 
 
-def make_variant(letter: str, seed: int, *, style: str = "font") -> LetterVariant:
+def make_variant(
+    letter: str,
+    seed: int,
+    *,
+    style: str = "font",
+    ideal: bool = False,
+) -> LetterVariant:
     if letter not in LETTERS:
         raise ValueError("letter must be A-Z")
     if style not in STYLES:
         raise ValueError(f"style must be one of {STYLES}")
+    if ideal and style != "segment8":
+        raise ValueError("ideal mode is only available with style='segment8'")
     rng = random.Random(seed)
     if style == "segment8":
+        if ideal:
+            return LetterVariant(
+                letter=letter,
+                seed=seed,
+                style=style,
+                font_name="segment8",
+                angle_deg=0.0,
+                scale=1.0,
+                shift_x=0,
+                shift_y=0,
+                thicken=0,
+                ideal=True,
+            )
         return LetterVariant(
             letter=letter,
             seed=seed,
@@ -102,6 +124,7 @@ def make_variant(letter: str, seed: int, *, style: str = "font") -> LetterVarian
             shift_x=rng.randint(-1, 1),
             shift_y=rng.randint(-1, 1),
             thicken=0,
+            ideal=False,
         )
     fonts = available_fonts()
     return LetterVariant(
@@ -114,6 +137,7 @@ def make_variant(letter: str, seed: int, *, style: str = "font") -> LetterVarian
         shift_x=rng.randint(-4, 4),
         shift_y=rng.randint(-4, 4),
         thicken=rng.choice((0, 0, 1, 1, 2)),
+        ideal=False,
     )
 
 
@@ -206,8 +230,9 @@ def render_letter_ascii(
     height: int = DEFAULT_SIZE,
     threshold: int = 210,
     style: str = "font",
+    ideal: bool = False,
 ) -> tuple[str, LetterVariant]:
-    variant = make_variant(letter, seed, style=style)
+    variant = make_variant(letter, seed, style=style, ideal=ideal)
     image = render_letter_image(variant)
     return (
         image_to_binary_ascii(

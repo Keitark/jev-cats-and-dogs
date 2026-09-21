@@ -5,7 +5,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 
-DEFAULT_CHARS = "@%#*+=-:. "
+DEFAULT_CHARS = "@%#*+=-:."
 
 
 def _validate(width: int, height: int, chars: str) -> None:

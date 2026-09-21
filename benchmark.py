@@ -10,7 +10,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from ascii_vision import DEFAULT_CHARS, image_to_ascii
+from ascii_vision import (
+    ASCII_MODES,
+    DEFAULT_CHARS,
+    render_ascii,
+    representation_description,
+)
 from jev_client import ProviderError, classify
 
 
@@ -133,21 +138,22 @@ def main() -> None:
         description="Evaluate Jev on cat/dog images represented only as ASCII."
     )
     parser.add_argument("--data", type=Path, default=Path("data/raw"))
+    parser.add_argument("--mode", choices=ASCII_MODES, default="plain")
     parser.add_argument("--width", type=int, default=64)
     parser.add_argument("--height", type=int, default=64)
     parser.add_argument("--chars", default=DEFAULT_CHARS)
     parser.add_argument("--no-autocontrast", action="store_true")
+    parser.add_argument("--no-magic-enhance", action="store_true")
+    parser.add_argument("--line-blur", type=float, default=1.4)
+    parser.add_argument("--line-threshold", type=int, default=205)
+    parser.add_argument("--line-width", type=int, default=1)
     parser.add_argument("--limit-per-class", type=int, default=50)
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument(
         "--backend", choices=("jev", "openrouter"), default="jev"
     )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path("results/jev_ascii_64x64.csv"),
-    )
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
     if args.limit_per_class < 1:
@@ -160,29 +166,45 @@ def main() -> None:
     if not examples:
         parser.error("no images found; run collect_images.py first")
 
+    output = args.output
+    if output is None:
+        mode_slug = args.mode.replace("-", "_")
+        output = Path(
+            f"results/jev_{mode_slug}_{args.width}x{args.height}.csv"
+        )
+
+    representation = representation_description(
+        args.mode, args.width, args.height
+    )
     rows: list[dict] = []
     total_calls = len(examples) * args.repeats
     call_index = 0
 
     for actual, path in examples:
-        art = image_to_ascii(
+        art = render_ascii(
             path,
             args.width,
             args.height,
+            mode=args.mode,
             chars=args.chars,
             autocontrast=not args.no_autocontrast,
+            magic_enhance=not args.no_magic_enhance,
+            line_blur=args.line_blur,
+            line_threshold=args.line_threshold,
+            line_width=args.line_width,
         )
 
         for repeat in range(1, args.repeats + 1):
             call_index += 1
             print(
                 f"[{call_index:03d}/{total_calls:03d}] "
-                f"{path.name} true={actual}",
+                f"{path.name} true={actual} mode={args.mode}",
                 end="",
                 flush=True,
             )
             row = {
                 "image": path.as_posix(),
+                "mode": args.mode,
                 "actual": actual,
                 "repeat": repeat,
                 "predicted": "",
@@ -200,6 +222,7 @@ def main() -> None:
                     args.width,
                     args.height,
                     backend=args.backend,
+                    representation=representation,
                 )
                 row.update(
                     {
@@ -226,9 +249,9 @@ def main() -> None:
 
             rows.append(row)
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = list(rows[0])
-    with args.output.open("w", newline="", encoding="utf-8") as handle:
+    with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
@@ -237,16 +260,22 @@ def main() -> None:
     summary.update(
         {
             "backend": args.backend,
+            "mode": args.mode,
+            "representation": representation,
             "width": args.width,
             "height": args.height,
             "chars": args.chars,
             "autocontrast": not args.no_autocontrast,
+            "magic_enhance": not args.no_magic_enhance,
+            "line_blur": args.line_blur,
+            "line_threshold": args.line_threshold,
+            "line_width": args.line_width,
             "limit_per_class": args.limit_per_class,
             "seed": args.seed,
             "repeats": args.repeats,
         }
     )
-    summary_path = args.output.with_suffix(".summary.json")
+    summary_path = output.with_suffix(".summary.json")
     summary_path.write_text(
         json.dumps(summary, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -254,7 +283,7 @@ def main() -> None:
 
     print_summary(summary)
     print()
-    print(f"CSV:     {args.output}")
+    print(f"CSV:     {output}")
     print(f"summary: {summary_path}")
 
 

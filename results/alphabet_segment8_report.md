@@ -240,3 +240,71 @@ This is not ordinary OCR accuracy because the shuffled bitmap is no longer a val
 - especially the change for H, L, and T relative to their ideal-glyph probabilities.
 
 The control isolates spatial arrangement from simple ink-count statistics. If H/L/T probabilities collapse after shuffling while the number of `#` cells is exactly preserved, that supports the interpretation that Jev is using some positional/spatial information rather than only total ink amount.
+
+## Pixel-shuffle spatial control
+
+Exact command:
+
+```powershell
+python alphabet_benchmark.py --shuffle-control --output results/alphabet_pixel_shuffle.csv
+```
+
+For each source letter, the ideal deterministic `segment8` bitmap was generated, its exact `#` count was preserved, and those `#` cells were deterministically redistributed over the 1024 positions. The shuffled bitmap was then sent with the unchanged Jev A-Z question and criteria.
+
+Aggregate result:
+
+- valid calls: 26;
+- API errors: 0;
+- source-letter retention: 1/26 (3.846%);
+- mean `p(source letter)`: 0.0393;
+- mean latency: 1,896 ms;
+- prediction entropy: 1.1867 bits;
+- ink count preserved for every source glyph: yes.
+
+Full prediction histogram:
+
+```text
+A=11 B=0 C=0 D=0 E=0 F=0 G=0 H=0 I=0 J=0 K=0 L=0 M=0
+N=1 O=0 P=0 Q=0 R=0 S=0 T=0 U=0 V=0 W=0 X=14 Y=0 Z=0
+```
+
+Source -> predicted table:
+
+| Source | Predicted | P(source) |
+| --- | --- | ---: |
+| A | X | 0.150 |
+| B | X | 0.020 |
+| C | X | 0.010 |
+| D | X | 0.010 |
+| E | X | 0.030 |
+| F | A | 0.000 |
+| G | A | 0.020 |
+| H | A | 0.040 |
+| I | X | 0.010 |
+| J | X | 0.000 |
+| K | X | 0.050 |
+| L | X | 0.000 |
+| M | A | 0.090 |
+| N | N | 0.140 |
+| O | A | 0.030 |
+| P | A | 0.010 |
+| Q | X | 0.020 |
+| R | A | 0.020 |
+| S | A | 0.030 |
+| T | X | 0.020 |
+| U | A | 0.040 |
+| V | A | 0.010 |
+| W | X | 0.071 |
+| X | A | 0.150 |
+| Y | X | 0.020 |
+| Z | X | 0.030 |
+
+H/L/T comparison:
+
+| Source | Ideal p(source) | Shuffled p(source) | Absolute drop |
+| --- | ---: | ---: | ---: |
+| H | 0.340 | 0.040 | 0.300 |
+| L | 0.160 | 0.000 | 0.160 |
+| T | 0.230 | 0.020 | 0.210 |
+
+The source-letter retention fell to chance-level behavior when spatial arrangement was destroyed while ink count stayed constant. H, L, and T all showed large drops in source probability. This supports a limited spatially dependent signal in the ideal-glyph run, but it is still not evidence of general OCR capability.

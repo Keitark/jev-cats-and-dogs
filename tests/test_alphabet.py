@@ -25,6 +25,17 @@ class AlphabetTests(unittest.TestCase):
         b, _ = render_letter_ascii("B", 99)
         self.assertNotEqual(a, b)
 
+    def test_segment8_is_exact_32x32_binary_grid(self):
+        art, variant = render_letter_ascii("A", 17, style="segment8")
+        validate_grid(art, 32, 32)
+        self.assertEqual(variant.style, "segment8")
+        self.assertEqual(set(art.replace("\n", "")), {"#", "."})
+
+    def test_segment8_different_letters_differ(self):
+        a, _ = render_letter_ascii("A", 99, style="segment8")
+        b, _ = render_letter_ascii("B", 99, style="segment8")
+        self.assertNotEqual(a, b)
+
     def test_payload_has_exactly_26_letter_choices(self):
         art, _ = render_letter_ascii("G", 17)
         payload = build_payload(art, 32, 32, backend="jev")

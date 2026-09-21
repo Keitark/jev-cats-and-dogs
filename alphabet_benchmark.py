@@ -13,7 +13,7 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-from alphabet_ascii import LETTERS, render_letter_ascii, validate_grid
+from alphabet_ascii import LETTERS, STYLES, render_letter_ascii, validate_grid
 
 
 class ProviderError(RuntimeError):
@@ -159,6 +159,7 @@ def main() -> None:
     parser.add_argument("--width", type=int, default=32)
     parser.add_argument("--height", type=int, default=32)
     parser.add_argument("--threshold", type=int, default=210)
+    parser.add_argument("--style", choices=STYLES, default="font")
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument(
         "--backend", choices=("jev", "openrouter"), default="jev"
@@ -191,10 +192,12 @@ def main() -> None:
                 width=args.width,
                 height=args.height,
                 threshold=args.threshold,
+                style=args.style,
             )
             print(
                 f"[{count:03d}/{total:03d}] true={letter} "
-                f"font={variant.font_name} angle={variant.angle_deg:.1f}",
+                f"style={variant.style} font={variant.font_name} "
+                f"angle={variant.angle_deg:.1f}",
                 end="",
                 flush=True,
             )
@@ -203,6 +206,7 @@ def main() -> None:
                 "actual": letter,
                 "variant": variant_index,
                 "seed": sample_seed,
+                "style": variant.style,
                 "font": variant.font_name,
                 "angle_deg": variant.angle_deg,
                 "scale": variant.scale,
@@ -263,6 +267,7 @@ def main() -> None:
         "width": args.width,
         "height": args.height,
         "threshold": args.threshold,
+        "style": args.style,
         "variants_per_letter": args.variants_per_letter,
         "valid_calls": len(valid),
         "errors": len(rows) - len(valid),

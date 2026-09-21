@@ -10,6 +10,39 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 LETTERS = tuple(string.ascii_uppercase)
 DEFAULT_SIZE = 32
+STYLES = ("font", "segment8")
+
+# An 8x8 LED/dot-matrix alphabet.  The one-cell strokes and surrounding
+# whitespace make the glyphs much easier to inspect than the tiny fallback
+# Pillow font, while still producing the same strict binary grid for Jev.
+SEGMENT8_PATTERNS: dict[str, tuple[str, ...]] = {
+    "A": ("........", "..###...", ".#...#..", ".#...#..", ".#####..", ".#...#..", ".#...#..", "........"),
+    "B": ("........", ".####...", ".#...#..", ".####...", ".#...#..", ".#...#..", ".####...", "........"),
+    "C": ("........", "..####..", ".#......", ".#......", ".#......", ".#......", "..####..", "........"),
+    "D": ("........", ".####...", ".#...#..", ".#....#.", ".#....#.", ".#...#..", ".####...", "........"),
+    "E": ("........", ".######.", ".#......", ".#####..", ".#......", ".#......", ".######.", "........"),
+    "F": ("........", ".######.", ".#......", ".#####..", ".#......", ".#......", ".#......", "........"),
+    "G": ("........", "..####..", ".#......", ".#......", ".#.###..", ".#...#..", "..####..", "........"),
+    "H": ("........", ".#...#..", ".#...#..", ".#####..", ".#...#..", ".#...#..", ".#...#..", "........"),
+    "I": ("........", ".#####..", "...#....", "...#....", "...#....", "...#....", ".#####..", "........"),
+    "J": ("........", "..#####.", "....#...", "....#...", "....#...", ".#..#...", "..##....", "........"),
+    "K": ("........", ".#...#..", ".#..#...", ".#.#....", ".##.....", ".#.#....", ".#..#...", "........"),
+    "L": ("........", ".#......", ".#......", ".#......", ".#......", ".#......", ".######.", "........"),
+    "M": ("........", ".#...#..", ".##.##..", ".#.#.#..", ".#.#.#..", ".#...#..", ".#...#..", "........"),
+    "N": ("........", ".#...#..", ".##..#..", ".#.#.#..", ".#..##..", ".#...#..", ".#...#..", "........"),
+    "O": ("........", "..###...", ".#...#..", ".#...#..", ".#...#..", ".#...#..", "..###...", "........"),
+    "P": ("........", ".####...", ".#...#..", ".####...", ".#......", ".#......", ".#......", "........"),
+    "Q": ("........", "..###...", ".#...#..", ".#...#..", ".#..##..", ".#...#..", "..####..", "........"),
+    "R": ("........", ".####...", ".#...#..", ".####...", ".#.#....", ".#..#...", ".#...#..", "........"),
+    "S": ("........", "..####..", ".#......", "..###...", ".....#..", ".....#..", ".####...", "........"),
+    "T": ("........", ".######.", "...#....", "...#....", "...#....", "...#....", "...#....", "........"),
+    "U": ("........", ".#...#..", ".#...#..", ".#...#..", ".#...#..", ".#...#..", "..###...", "........"),
+    "V": ("........", ".#...#..", ".#...#..", ".#...#..", ".#...#..", "..#.#...", "...#....", "........"),
+    "W": ("........", ".#...#..", ".#...#..", ".#...#..", ".#.#.#..", ".#.#.#..", ".##.##..", "........"),
+    "X": ("........", ".#...#..", "..#.#...", "...#....", "...#....", "..#.#...", ".#...#..", "........"),
+    "Y": ("........", ".#...#..", "..#.#...", "...#....", "...#....", "...#....", "...#....", "........"),
+    "Z": ("........", ".######.", ".....#..", "....#...", "...#....", "..#.....", ".######.", "........"),
+}
 
 _FONT_CANDIDATES = (
     "DejaVuSans.ttf",
@@ -26,6 +59,7 @@ _FONT_CANDIDATES = (
 class LetterVariant:
     letter: str
     seed: int
+    style: str
     font_name: str
     angle_deg: float
     scale: float
@@ -51,14 +85,29 @@ def _font(name: str, size: int) -> ImageFont.ImageFont:
     return ImageFont.truetype(name, size)
 
 
-def make_variant(letter: str, seed: int) -> LetterVariant:
+def make_variant(letter: str, seed: int, *, style: str = "font") -> LetterVariant:
     if letter not in LETTERS:
         raise ValueError("letter must be A-Z")
+    if style not in STYLES:
+        raise ValueError(f"style must be one of {STYLES}")
     rng = random.Random(seed)
+    if style == "segment8":
+        return LetterVariant(
+            letter=letter,
+            seed=seed,
+            style=style,
+            font_name="segment8",
+            angle_deg=rng.uniform(-2.0, 2.0),
+            scale=rng.uniform(0.90, 0.98),
+            shift_x=rng.randint(-1, 1),
+            shift_y=rng.randint(-1, 1),
+            thicken=0,
+        )
     fonts = available_fonts()
     return LetterVariant(
         letter=letter,
         seed=seed,
+        style=style,
         font_name=rng.choice(fonts),
         angle_deg=rng.uniform(-12.0, 12.0),
         scale=rng.uniform(0.78, 0.96),
@@ -73,6 +122,9 @@ def render_letter_image(
     *,
     canvas_size: int = 128,
 ) -> Image.Image:
+    if variant.style == "segment8":
+        return render_segment8_image(variant, canvas_size=canvas_size)
+
     image = Image.new("L", (canvas_size, canvas_size), 255)
     draw = ImageDraw.Draw(image)
 
@@ -95,6 +147,29 @@ def render_letter_image(
         expand=False,
         fillcolor=255,
     )
+    return image
+
+
+def render_segment8_image(
+    variant: LetterVariant,
+    *,
+    canvas_size: int = 128,
+) -> Image.Image:
+    """Render an A-Z glyph as a clear LED/dot-matrix style image."""
+    pattern = SEGMENT8_PATTERNS[variant.letter]
+    base = Image.new("L", (8, 8), 255)
+    base_pixels = base.load()
+    for y, row in enumerate(pattern):
+        for x, value in enumerate(row):
+            if value == "#":
+                base_pixels[x, y] = 0
+
+    glyph_size = max(32, int(canvas_size * 0.72 * variant.scale))
+    glyph = base.resize((glyph_size, glyph_size), Image.Resampling.NEAREST)
+    image = Image.new("L", (canvas_size, canvas_size), 255)
+    x = (canvas_size - glyph_size) // 2 + variant.shift_x
+    y = (canvas_size - glyph_size) // 2 + variant.shift_y
+    image.paste(glyph, (x, y))
     return image
 
 
@@ -130,8 +205,9 @@ def render_letter_ascii(
     width: int = DEFAULT_SIZE,
     height: int = DEFAULT_SIZE,
     threshold: int = 210,
+    style: str = "font",
 ) -> tuple[str, LetterVariant]:
-    variant = make_variant(letter, seed)
+    variant = make_variant(letter, seed, style=style)
     image = render_letter_image(variant)
     return (
         image_to_binary_ascii(

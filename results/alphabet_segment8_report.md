@@ -308,3 +308,50 @@ H/L/T comparison:
 | T | 0.230 | 0.020 | 0.210 |
 
 The source-letter retention fell to chance-level behavior when spatial arrangement was destroyed while ink count stayed constant. H, L, and T all showed large drops in source probability. This supports a limited spatially dependent signal in the ideal-glyph run, but it is still not evidence of general OCR capability.
+
+
+## Next control: H/L/T translation scan
+
+The pixel-shuffle result shows that H/L/T source probabilities collapse when spatial arrangement is destroyed while total ink count is preserved. The next question is whether the useful spatial signal is translation-tolerant or tied to an absolute location in the 32x32 text grid.
+
+This control changes **position only**.
+
+Experimental design:
+
+- source letters: H, L, T;
+- fixed 8x8 dot-matrix pattern for each letter;
+- fixed rendered glyph block: 16x16;
+- fixed canvas: 32x32;
+- no rotation;
+- no scale jitter;
+- no dropout/noise;
+- no pixel shuffle;
+- top-left x positions: 0, 4, 8, 12, 16;
+- top-left y positions: 0, 4, 8, 12, 16.
+
+This gives 25 positions per letter and **75 Jev calls total**.
+
+The exact command is:
+
+```powershell
+python alphabet_benchmark.py --translation-control --output results/alphabet_translation_hlt.csv
+```
+
+Primary measurements:
+
+- overall correct / 75;
+- H, L, and T accuracy separately;
+- p(source letter) at every x/y location;
+- predicted letter at every x/y location;
+- 5x5 p(source) heatmap for H;
+- 5x5 p(source) heatmap for L;
+- 5x5 p(source) heatmap for T.
+
+Interpretation:
+
+- recognition across the full grid would indicate substantial translation tolerance;
+- recognition only near the center would indicate that the spatial signal depends strongly on absolute position;
+- directional asymmetry would indicate a positional bias in the text-grid representation;
+- a smooth fall in p(source) with displacement would suggest limited local translation tolerance rather than a hard center template.
+
+The implementation deliberately uses a smaller fixed 16x16 glyph so the same shape can be moved over a wide range without clipping. Results from this control should therefore be compared primarily **within this 75-call scan**, not numerically equated to the earlier larger ideal-glyph probabilities without noting the size change.

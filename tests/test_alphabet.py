@@ -1,7 +1,12 @@
 import unittest
 
 from alphabet_ascii import LETTERS, render_letter_ascii, validate_grid
-from alphabet_benchmark import build_payload, validate_probabilities
+from alphabet_benchmark import (
+    blank_ascii,
+    build_payload,
+    summarize_blank_control,
+    validate_probabilities,
+)
 
 
 class AlphabetTests(unittest.TestCase):
@@ -56,6 +61,29 @@ class AlphabetTests(unittest.TestCase):
     def test_ideal_requires_segment8(self):
         with self.assertRaises(ValueError):
             render_letter_ascii("A", 17, ideal=True)
+
+    def test_blank_ascii_is_identical_32x32_all_dots(self):
+        samples = [blank_ascii(32, 32) for _ in range(26)]
+        self.assertEqual(len(set(samples)), 1)
+        validate_grid(samples[0], 32, 32)
+        self.assertEqual(set(samples[0].replace("\n", "")), {"."})
+
+    def test_blank_summary_has_no_fake_accuracy(self):
+        row = {
+            "predicted": "A",
+            "error": "",
+            "latency_ms": 100.0,
+            **{f"p_{letter}": 1 / 26 for letter in LETTERS},
+        }
+        summary = summarize_blank_control(
+            [row],
+            width=32,
+            height=32,
+            input_sha256="test",
+        )
+        self.assertNotIn("accuracy", summary)
+        self.assertNotIn("correct", summary)
+        self.assertEqual(summary["prediction_counts"]["A"], 1)
 
     def test_payload_has_exactly_26_letter_choices(self):
         art, _ = render_letter_ascii("G", 17)

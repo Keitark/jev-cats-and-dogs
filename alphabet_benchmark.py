@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 import os
 import statistics
 import string
 import time
+from collections import Counter
 from pathlib import Path
 
 import requests
@@ -151,11 +153,171 @@ def wilson_interval(successes: int, total: int) -> tuple[float, float]:
     return max(0.0, center - margin), min(1.0, center + margin)
 
 
+def blank_ascii(width: int = 32, height: int = 32) -> str:
+    """Return the fixed all-background bitmap used by the blank control."""
+    if width < 1 or height < 1:
+        raise ValueError("width/height must be positive")
+    art = "\n".join("." * width for _ in range(height))
+    validate_grid(art, width, height)
+    return art
+
+
+def _entropy_bits(counts: dict[str, int], total: int) -> float:
+    if total <= 0:
+        return 0.0
+    return max(0.0, -sum(
+        (count / total) * math.log2(count / total)
+        for count in counts.values()
+        if count
+    ))
+
+
+def summarize_blank_control(
+    rows: list[dict],
+    *,
+    width: int,
+    height: int,
+    input_sha256: str,
+) -> dict:
+    valid = [row for row in rows if not row["error"]]
+    counts = Counter(row["predicted"] for row in valid)
+    prediction_counts = {letter: counts.get(letter, 0) for letter in LETTERS}
+    total = len(valid)
+    prediction_percentages = {
+        letter: (100.0 * count / total if total else 0.0)
+        for letter, count in prediction_counts.items()
+    }
+    mean_probabilities = {
+        letter: (
+            statistics.fmean(float(row[f"p_{letter}"]) for row in valid)
+            if valid
+            else None
+        )
+        for letter in LETTERS
+    }
+    top5 = [
+        {
+            "letter": letter,
+            "count": prediction_counts[letter],
+            "percentage": prediction_percentages[letter],
+        }
+        for letter in sorted(
+            LETTERS,
+            key=lambda value: (-prediction_counts[value], value),
+        )[:5]
+    ]
+    return {
+        "control": "blank",
+        "width": width,
+        "height": height,
+        "all_dots": True,
+        "input_sha256": input_sha256,
+        "valid_calls": total,
+        "errors": len(rows) - total,
+        "prediction_counts": prediction_counts,
+        "prediction_percentages": prediction_percentages,
+        "mean_predicted_probability": mean_probabilities,
+        "mean_latency_ms": (
+            statistics.fmean(float(row["latency_ms"]) for row in valid)
+            if valid
+            else None
+        ),
+        "entropy_bits": _entropy_bits(prediction_counts, total),
+        "top5": top5,
+    }
+
+
+def run_blank_control(args: argparse.Namespace) -> None:
+    art = blank_ascii(args.width, args.height)
+    input_sha256 = hashlib.sha256(art.encode("utf-8")).hexdigest()
+    fieldnames = [
+        "call",
+        "input_sha256",
+        "predicted",
+        "confidence",
+        "latency_ms",
+        *[f"p_{letter}" for letter in LETTERS],
+        "error",
+    ]
+    rows: list[dict] = []
+
+    for call_index in range(1, args.calls + 1):
+        row = {
+            "call": call_index,
+            "input_sha256": input_sha256,
+            "predicted": "",
+            "confidence": "",
+            "latency_ms": "",
+            **{f"p_{letter}": "" for letter in LETTERS},
+            "error": "",
+        }
+        print(
+            f"[{call_index:02d}/{args.calls:02d}] blank input",
+            end="",
+            flush=True,
+        )
+        try:
+            choice, probabilities, confidence, latency = classify(
+                art,
+                args.width,
+                args.height,
+                backend=args.backend,
+            )
+            row.update(
+                {
+                    "predicted": choice,
+                    "confidence": "" if confidence is None else confidence,
+                    "latency_ms": latency,
+                    **{
+                        f"p_{letter}": probabilities[letter]
+                        for letter in LETTERS
+                    },
+                }
+            )
+            print(f" -> {choice}")
+        except ProviderError as exc:
+            row["error"] = str(exc)
+            print(f" ERROR: {exc}")
+        rows.append(row)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    summary = summarize_blank_control(
+        rows,
+        width=args.width,
+        height=args.height,
+        input_sha256=input_sha256,
+    )
+    summary_path = args.output.with_suffix(".summary.json")
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    print()
+    print(
+        f"valid calls: {summary['valid_calls']} "
+        f"errors: {summary['errors']}"
+    )
+    print("prediction counts:")
+    print(" ".join(
+        f"{letter}={summary['prediction_counts'][letter]}"
+        for letter in LETTERS
+        if summary["prediction_counts"][letter]
+    ))
+    print(f"entropy: {summary['entropy_bits']:.4f} bits")
+    print(f"mean latency: {summary['mean_latency_ms']:.1f} ms")
+    print(f"CSV: {args.output}")
+    print(f"summary: {summary_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Zero-shot Jev A-Z identification from ASCII bitmaps."
     )
     parser.add_argument("--variants-per-letter", type=int, default=5)
+    parser.add_argument("--calls", type=int, default=26)
     parser.add_argument("--width", type=int, default=32)
     parser.add_argument("--height", type=int, default=32)
     parser.add_argument("--threshold", type=int, default=210)
@@ -164,6 +326,11 @@ def main() -> None:
         "--ideal",
         action="store_true",
         help="use one fixed, centered segment8 glyph per letter",
+    )
+    parser.add_argument(
+        "--blank-control",
+        action="store_true",
+        help="repeat one identical all-dot bitmap and measure output prior",
     )
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument(
@@ -177,6 +344,12 @@ def main() -> None:
     args = parser.parse_args()
     if args.variants_per_letter < 1:
         parser.error("--variants-per-letter must be positive")
+    if args.calls < 1:
+        parser.error("--calls must be positive")
+    if args.blank_control and args.ideal:
+        parser.error("--blank-control cannot be combined with --ideal")
+    if args.blank_control and (args.width, args.height) != (32, 32):
+        parser.error("--blank-control requires the strict 32x32 grid")
     if args.ideal and args.style != "segment8":
         parser.error("--ideal requires --style segment8")
     if args.ideal and args.variants_per_letter != 1:
@@ -185,6 +358,10 @@ def main() -> None:
         parser.error("--ideal requires the strict 32x32 grid")
 
     load_dotenv()
+    if args.blank_control:
+        run_blank_control(args)
+        return
+
     rows: list[dict] = []
     total = len(LETTERS) * args.variants_per_letter
     count = 0

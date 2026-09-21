@@ -152,3 +152,68 @@ Primary comparison:
 - blank-input prediction counts: to be measured.
 
 The main question is whether the A/H/K-heavy prediction distribution persists with no spatial signal. If L/T remain rare on blank input but are selected on their corresponding ideal glyphs, that would support a limited glyph-specific signal despite a strong output prior.
+
+## Blank-input control
+
+Exact command:
+
+```powershell
+python alphabet_benchmark.py --blank-control --calls 26 --output results/alphabet_blank_control.csv
+```
+
+Condition:
+
+- the same all-dot bitmap was used for every call;
+- width = 32 and height = 32;
+- all 1024 cells were `.` and no cell was `#`;
+- input SHA-256: `3ad85daf37d87c531bc2a1574856ef380f50fdebf885d06a4b59a1a11b3938ab`;
+- the Jev question and all 26 A-Z criteria were unchanged;
+- blank input has no ground-truth letter, so no accuracy was calculated.
+
+Aggregate result:
+
+- valid calls: 26;
+- API errors: 0;
+- mean latency: 1,631 ms;
+- empirical prediction entropy: 0.0000 bits;
+- top prediction: I = 26/26 (100%).
+
+Blank prediction histogram and mean returned probability:
+
+| Letter | Count | Percentage | Mean probability |
+| --- | ---: | ---: | ---: |
+| A | 0 | 0.0% | 0.2566 |
+| B | 0 | 0.0% | 0.0027 |
+| C | 0 | 0.0% | 0.0231 |
+| D | 0 | 0.0% | 0.0100 |
+| E | 0 | 0.0% | 0.0281 |
+| F | 0 | 0.0% | 0.0131 |
+| G | 0 | 0.0% | 0.0100 |
+| H | 0 | 0.0% | 0.0296 |
+| I | 26 | 100.0% | 0.3336 |
+| J | 0 | 0.0% | 0.0000 |
+| K | 0 | 0.0% | 0.0100 |
+| L | 0 | 0.0% | 0.0100 |
+| M | 0 | 0.0% | 0.0100 |
+| N | 0 | 0.0% | 0.0112 |
+| O | 0 | 0.0% | 0.0924 |
+| P | 0 | 0.0% | 0.0100 |
+| Q | 0 | 0.0% | 0.0100 |
+| R | 0 | 0.0% | 0.0000 |
+| S | 0 | 0.0% | 0.0162 |
+| T | 0 | 0.0% | 0.0246 |
+| U | 0 | 0.0% | 0.0100 |
+| V | 0 | 0.0% | 0.0100 |
+| W | 0 | 0.0% | 0.0100 |
+| X | 0 | 0.0% | 0.0527 |
+| Y | 0 | 0.0% | 0.0046 |
+| Z | 0 | 0.0% | 0.0115 |
+
+Comparison with the ideal-glyph prediction histogram:
+
+| Condition | A | H | K | D | L | T | I |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Ideal glyph | 14 | 5 | 4 | 1 | 1 | 1 | 0 |
+| Blank input | 0 | 0 | 0 | 0 | 0 | 0 | 26 |
+
+The blank control did not reproduce the ideal run's A/H/K-heavy prediction histogram. Instead, it produced a completely deterministic I prior. L and T were selected on their own ideal glyphs but never on blank input, which is consistent with some input-dependent signal; however, this control alone does not establish OCR ability.

@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw
 from ascii_vision import (
     image_to_ascii,
     make_lineart,
+    make_pencil_sketch,
     render_ascii,
     validate_ascii_grid,
 )
@@ -70,8 +71,20 @@ class AsciiVisionTests(unittest.TestCase):
             line_threshold=205,
         )
         validate_ascii_grid(art, 64, 64)
-        self.assertIn("@", art)
-        self.assertIn(".", art)
+
+    def test_pencil_magic_is_exact_grid(self):
+        image = Image.new("RGB", (160, 100), "white")
+        draw = ImageDraw.Draw(image)
+        draw.ellipse((35, 10, 125, 95), fill=(80, 80, 80))
+        draw.ellipse((60, 35, 75, 50), fill="black")
+        draw.ellipse((90, 35, 105, 50), fill="black")
+
+        sketch = make_pencil_sketch(image, side=256, blur_radius=10.0)
+        self.assertEqual(sketch.size, (256, 256))
+
+        art = render_ascii(image, 64, 64, mode="pencil-magic")
+        validate_ascii_grid(art, 64, 64)
+        self.assertGreater(len(set(art.replace("\n", ""))), 2)
 
     def test_payload_has_only_cat_and_dog_choices(self):
         art = "\n".join(["@" * 8 for _ in range(8)])

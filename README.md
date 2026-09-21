@@ -1,3 +1,36 @@
+# Jev ASCII Vision Experiments
+
+## Current main experiment: A-Z identification
+
+We pivoted the benchmark from cats/dogs to uppercase alphabet recognition because it cleanly isolates whether Jev can recover a 2D shape from text.
+
+The new benchmark renders A-Z as synthetic glyphs, converts them to a strict 32x32 binary ASCII bitmap, and asks Jev to choose one of 26 letters.
+
+~~~text
+image/glyph -> 32x32 bitmap -> '#' / '.' -> Jev -> A-Z choice
+~~~
+
+Each sample varies font, small rotation, scale, stroke thickness, and position. No OCR label or filename is included in the state.
+
+Preview one sample:
+
+~~~bash
+python preview_alphabet.py A --seed 17
+python preview_alphabet.py R --seed 1234
+~~~
+
+Run the benchmark:
+
+~~~bash
+python alphabet_benchmark.py --variants-per-letter 5
+~~~
+
+That produces 130 decisions by default (26 letters x 5 variants). Random chance is 1/26 = 3.85%.
+
+The older cats/dogs work is retained below as an exploratory predecessor.
+
+---
+
 # Jev Cats vs Dogs via 64x64 ASCII
 
 A small experiment for testing whether Jev can classify cat and dog images after the image is deliberately collapsed into plain text.

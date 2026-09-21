@@ -462,3 +462,58 @@ Interpretation:
 - The response is locally smooth in some directions but not a hard geometric template. H generally declines toward the right with local fluctuations; L drops sharply after `x=0` and then stays near 0.25–0.32; T peaks near `x=8` and declines toward the right. L's errors are mostly L -> T, while T has one T -> I error at `(x=12,y=4)`.
 
 This is a controlled translation scan, not a general OCR result. The glyph is a fixed 16x16 block here, so comparisons to the earlier larger ideal-glyph baseline should remain qualitative and should account for the changed glyph size.
+
+
+## Next control: character-encoding dependence
+
+The H/L/T translation scan showed strong recognition across a wide range of positions, especially for H and T. The next control asks whether that spatial signal depends on the literal characters used to encode foreground and background.
+
+This control keeps **shape, size, and position fixed** and changes only the text symbols used to represent ink/background.
+
+Experimental design:
+
+- source letters: H, L, T;
+- fixed 16x16 glyph block;
+- fixed 32x32 canvas;
+- fixed position: x=8, y=8;
+- no translation scan;
+- no rotation;
+- no scale jitter;
+- no noise/dropout/shuffle;
+- unchanged A-Z choice task;
+- prompt explicitly states which symbol means ink and which means background.
+
+Character pairs:
+
+| Condition | Ink | Background |
+| --- | --- | --- |
+| hash_dot | `#` | `.` |
+| at_dot | `@` | `.` |
+| star_dot | `*` | `.` |
+| plus_minus | `+` | `-` |
+| one_zero | `1` | `0` |
+| percent_underscore | `%` | `_` |
+
+This gives 6 encodings x 3 letters = **18 Jev calls**.
+
+Exact command:
+
+```powershell
+python alphabet_benchmark.py --character-control --output results/alphabet_character_hlt.csv
+```
+
+Primary measurements:
+
+- total correct / 18;
+- accuracy and mean p(source) for each character pair;
+- H/L/T accuracy across all six encodings;
+- source -> predicted for every condition;
+- whether the `#` / `.` baseline remains unusually strong relative to other encodings.
+
+Interpretation:
+
+- similar recognition across character pairs would support a representation that is relatively insensitive to the literal symbols and more dependent on the 2D arrangement;
+- a sharp collapse outside `#` / `.` would indicate strong character/token dependence;
+- systematic differences among punctuation and numeric encodings would suggest tokenizer/sequence-representation effects.
+
+Target letters themselves are intentionally not used as rendering symbols to avoid direct label leakage.

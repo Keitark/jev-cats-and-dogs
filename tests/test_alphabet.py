@@ -1,12 +1,20 @@
 import unittest
 
-from alphabet_ascii import LETTERS, render_letter_ascii, validate_grid
+from alphabet_ascii import (
+    LETTERS,
+    TRANSLATION_LETTERS,
+    TRANSLATION_POSITIONS,
+    render_letter_ascii,
+    render_segment8_positioned_ascii,
+    validate_grid,
+)
 from alphabet_benchmark import (
     blank_ascii,
     build_payload,
     shuffle_ascii_preserve_ink,
     summarize_blank_control,
     summarize_shuffle_control,
+    summarize_translation_control,
     validate_probabilities,
 )
 
@@ -130,6 +138,68 @@ class AlphabetTests(unittest.TestCase):
         self.assertNotIn("accuracy", summary)
         self.assertEqual(summary["source_letter_retained"], 0)
         self.assertEqual(summary["mean_p_source"], 0.02)
+
+    def test_positioned_segment8_is_exact_32x32(self):
+        art = render_segment8_positioned_ascii("H", x=0, y=0)
+        validate_grid(art, 32, 32)
+        self.assertEqual(set(art.replace("\n", "")), {"#", "."})
+
+    def test_positioned_segment8_accepts_extreme_valid_positions(self):
+        top_left = render_segment8_positioned_ascii("L", x=0, y=0)
+        bottom_right = render_segment8_positioned_ascii("L", x=16, y=16)
+        validate_grid(top_left, 32, 32)
+        validate_grid(bottom_right, 32, 32)
+        self.assertNotEqual(top_left, bottom_right)
+        self.assertEqual(
+            top_left.replace("\n", "").count("#"),
+            bottom_right.replace("\n", "").count("#"),
+        )
+
+    def test_positioned_segment8_rejects_out_of_bounds(self):
+        with self.assertRaises(ValueError):
+            render_segment8_positioned_ascii("T", x=17, y=16)
+        with self.assertRaises(ValueError):
+            render_segment8_positioned_ascii("T", x=16, y=17)
+        with self.assertRaises(ValueError):
+            render_segment8_positioned_ascii("T", x=-1, y=0)
+
+    def test_translation_grid_has_exactly_75_calls(self):
+        self.assertEqual(
+            len(TRANSLATION_LETTERS)
+            * len(TRANSLATION_POSITIONS)
+            * len(TRANSLATION_POSITIONS),
+            75,
+        )
+        self.assertEqual(TRANSLATION_LETTERS, ("H", "L", "T"))
+        self.assertEqual(TRANSLATION_POSITIONS, (0, 4, 8, 12, 16))
+
+    def test_translation_summary_builds_5x5_heatmap(self):
+        rows = []
+        for y in TRANSLATION_POSITIONS:
+            for x in TRANSLATION_POSITIONS:
+                rows.append(
+                    {
+                        "source_letter": "H",
+                        "x": x,
+                        "y": y,
+                        "predicted": "H",
+                        "correct": True,
+                        "p_source": 0.5,
+                        "latency_ms": 100.0,
+                        "error": "",
+                    }
+                )
+        summary = summarize_translation_control(rows)
+        self.assertEqual(summary["valid_calls"], 25)
+        self.assertEqual(summary["correct"], 25)
+        self.assertEqual(summary["per_letter"]["H"]["accuracy"], 1.0)
+        self.assertEqual(len(summary["heatmaps"]["H"]["p_source"]), 5)
+        self.assertTrue(
+            all(
+                len(row) == 5
+                for row in summary["heatmaps"]["H"]["p_source"]
+            )
+        )
 
     def test_payload_has_exactly_26_letter_choices(self):
         art, _ = render_letter_ascii("G", 17)

@@ -90,10 +90,10 @@ python preview_ascii.py data/raw/cat/cat_0001.jpg --chars "@%#*+=-:. "
 The default ramp is:
 
 ~~~text
-@%#*+=-:. 
+@%#*+=-:.
 ~~~
 
-Dark pixels map to dense characters and bright pixels map toward spaces.
+Dark pixels map to dense characters and bright pixels map toward sparse visible characters. The default deliberately avoids spaces so trailing whitespace cannot be normalized away in transit.
 
 ## 3. Run Jev classification
 
@@ -134,7 +134,7 @@ python benchmark.py --width 64 --height 64 --repeats 3
 That gives several useful ablations:
 
 - 64 x 64 vs 32 x 32: spatial resolution
-- 10-level vs 5-level vs binary ASCII: grayscale information
+- 9-level vs reduced-level vs binary ASCII: grayscale information
 - repeated inference: decision stability
 - cat vs dog recall: class asymmetry
 

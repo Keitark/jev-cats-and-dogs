@@ -1,0 +1,36 @@
+name: sample-ascii-preview
+
+on:
+  push:
+    paths:
+      - ".github/workflows/sample-ascii.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Download sample photos
+        run: |
+          mkdir -p /tmp/jev-samples
+          curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/2/28/Kittyplya03042006.JPG" -o /tmp/jev-samples/cat1.jpg
+          curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/c/c0/Reclining_black_dog.jpg" -o /tmp/jev-samples/dog1.jpg
+          curl -L --fail --retry 3 "https://upload.wikimedia.org/wikipedia/commons/5/52/Cat_November_2010-1a_%28cropped_2023%29.jpg" -o /tmp/jev-samples/cat2.jpg
+      - name: Render lineart ASCII
+        run: |
+          python preview_ascii.py /tmp/jev-samples/cat1.jpg --mode lineart-magic --width 64 --height 64 > /tmp/cat1.txt
+          python preview_ascii.py /tmp/jev-samples/dog1.jpg --mode lineart-magic --width 64 --height 64 > /tmp/dog1.txt
+          python preview_ascii.py /tmp/jev-samples/cat2.jpg --mode lineart-magic --width 64 --height 64 > /tmp/cat2.txt
+          echo "===== CAT1 ====="
+          cat /tmp/cat1.txt
+          echo "===== DOG1 ====="
+          cat /tmp/dog1.txt
+          echo "===== CAT2 ====="
+          cat /tmp/cat2.txt

@@ -56,14 +56,23 @@ def validate_probabilities(probabilities) -> dict[str, float]:
     return {key: float(value) / total for key, value in probabilities.items()}
 
 
-def build_state(ascii_art: str, width: int, height: int) -> str:
+def build_state(
+    ascii_art: str,
+    width: int,
+    height: int,
+    representation: str | None = None,
+) -> str:
     validate_ascii_grid(ascii_art, width, height)
+    if representation is None:
+        representation = (
+            f"center-cropping to a square, converting to grayscale, resizing to "
+            f"exactly {width} columns x {height} rows, and mapping brightness to ASCII"
+        )
+
     return (
         "Classify the visual pattern below.\n"
-        "It was created from one photograph by center-cropping to a square, "
-        "converting to grayscale, resizing to exactly "
-        f"{width} columns x {height} rows, and mapping darker pixels to denser "
-        "ASCII characters.\n"
+        "It was created from one photograph by "
+        f"{representation}.\n"
         "Only the ASCII image is evidence. No filename, caption, source metadata, "
         "or original label is included.\n"
         "Return the animal class, not an explanation.\n"
@@ -77,6 +86,7 @@ def build_payload(
     width: int,
     height: int,
     backend: str = "jev",
+    representation: str | None = None,
 ) -> dict:
     if backend == "jev":
         model = os.getenv("JEV_MODEL", "jev-latest")
@@ -87,7 +97,7 @@ def build_payload(
 
     return {
         "model": model,
-        "state": build_state(ascii_art, width, height),
+        "state": build_state(ascii_art, width, height, representation),
         "questions": {
             "animal": {
                 "type": "choice",
@@ -109,6 +119,7 @@ def classify(
     height: int = 64,
     *,
     backend: str = "jev",
+    representation: str | None = None,
 ) -> Decision:
     key = api_key(backend)
     if not key:
@@ -119,7 +130,13 @@ def classify(
         if backend == "jev"
         else "https://openrouter.ai/api/alpha/decisions"
     )
-    payload = build_payload(ascii_art, width, height, backend)
+    payload = build_payload(
+        ascii_art,
+        width,
+        height,
+        backend,
+        representation=representation,
+    )
     timeout = float(os.getenv("MODEL_TIMEOUT", "30"))
     timeout = min(90, max(1, timeout)) if math.isfinite(timeout) else 30
 

@@ -517,3 +517,51 @@ Interpretation:
 - systematic differences among punctuation and numeric encodings would suggest tokenizer/sequence-representation effects.
 
 Target letters themselves are intentionally not used as rendering symbols to avoid direct label leakage.
+
+
+## H/L/T character-encoding control results
+
+Exact command:
+
+```powershell
+python alphabet_benchmark.py --character-control --output results/alphabet_character_hlt.csv
+```
+
+The geometry was fixed at a 32x32 canvas with a 16x16 glyph positioned at `(x=8, y=8)`. Only the visible ASCII characters used for ink and background changed. The prompt was updated on every call to describe the selected character pair.
+
+Aggregate result:
+
+- valid calls: 18;
+- API errors: 0;
+- correct: 12/18;
+- accuracy: 66.67%;
+- mean p(source): 0.2811;
+- mean latency: 1,968 ms.
+
+Result by character pair:
+
+| Pair | Ink / background | Correct | Accuracy | Mean p(source) | Predictions H / L / T |
+| --- | --- | ---: | ---: | ---: | --- |
+| hash_dot | `#` / `.` | 2/3 | 66.67% | 0.3033 | H / T / T |
+| at_dot | `@` / `.` | 2/3 | 66.67% | 0.3233 | H / T / T |
+| star_dot | `*` / `.` | 2/3 | 66.67% | 0.3167 | H / T / T |
+| plus_minus | `+` / `-` | 3/3 | 100.00% | 0.3100 | H / L / T |
+| one_zero | `1` / `0` | 1/3 | 33.33% | 0.2033 | O / T / T |
+| percent_underscore | `%` / `_` | 2/3 | 66.67% | 0.2300 | H / T / T |
+
+Result by source letter:
+
+| Source | Correct | Accuracy | Mean p(source) |
+| --- | ---: | ---: | ---: |
+| H | 5/6 | 83.33% | 0.2567 |
+| L | 1/6 | 16.67% | 0.2117 |
+| T | 6/6 | 100.00% | 0.3750 |
+
+Interpretation:
+
+- Literal `#` / `.` did not outperform every alternative in this small control. It tied `@` / `.`, `*` / `.`, and `%` / `_` at 2/3; `+` / `-` scored 3/3, while `1` / `0` scored only 1/3.
+- The punctuation encodings were broadly similar in accuracy, although `%` / `_` returned a lower mean p(source) than the other punctuation pairs. The `+` / `-` result is encouraging but is based on only three calls.
+- `1` / `0` behaved differently and was the weakest encoding: H was predicted as O and L as T, while T remained correct.
+- H and T stayed relatively robust across encodings, while L remained substantially weaker and was usually confused with T. Across all six encodings, T was correct 6/6, H 5/6, and L 1/6.
+
+This is evidence of character/token sensitivity for the numeric encoding, not proof that any symbol pair is universally better. Each pair has only three calls, so the pair-level differences should be treated as directional rather than definitive.

@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 
 DEFAULT_CHARS = "@%#*+=-:."
-ASCII_MODES = ("plain", "ascii-magic", "lineart-magic")
+ASCII_MODES = ("plain", "ascii-magic", "lineart-magic", "pencil-magic")
 
 
 def _validate(width: int, height: int, chars: str) -> None:
@@ -108,6 +108,45 @@ def make_lineart(
     return lineart.convert("RGB")
 
 
+def make_pencil_sketch(
+    image_or_path: Image.Image | str | Path,
+    *,
+    side: int = 512,
+    blur_radius: float = 10.0,
+    autocontrast_cutoff: int = 1,
+) -> Image.Image:
+    """Classic pencil-sketch transform that keeps soft shading.
+
+    gray -> invert -> Gaussian blur -> color dodge
+    """
+    if blur_radius <= 0:
+        raise ValueError("blur_radius must be positive")
+
+    image = prepare_square_rgb(image_or_path, side)
+    gray = ImageOps.autocontrast(
+        image.convert("L"),
+        cutoff=autocontrast_cutoff,
+    )
+    inverted = ImageOps.invert(gray)
+    blurred = inverted.filter(ImageFilter.GaussianBlur(blur_radius))
+
+    # Color dodge: result = gray * 255 / (255 - blurred).
+    # Use point-wise arithmetic without NumPy so preprocessing stays lightweight.
+    g = list(gray.getdata())
+    b = list(blurred.getdata())
+    pixels = [
+        min(255, (gv * 255) // max(1, 255 - bv))
+        for gv, bv in zip(g, b)
+    ]
+    sketch = Image.new("L", gray.size)
+    sketch.putdata(pixels)
+
+    # Slight contrast stretch makes the important strokes survive 64x64
+    # downsampling while preserving gray pencil shading.
+    sketch = ImageOps.autocontrast(sketch, cutoff=1)
+    return sketch.convert("RGB")
+
+
 def image_to_ascii(
     image_or_path: Image.Image | str | Path,
     width: int = 64,
@@ -139,11 +178,20 @@ def ascii_magic_to_ascii(
     line_blur: float = 1.4,
     line_threshold: int = 205,
     line_width: int = 1,
+    pencil: bool = False,
+    pencil_blur: float = 10.0,
 ) -> str:
     _validate(width, height, chars)
 
     work_side = max(256, width * 4, height * 4)
-    if lineart:
+    if pencil:
+        image = make_pencil_sketch(
+            image_or_path,
+            side=work_side,
+            blur_radius=pencil_blur,
+        )
+        enhance = False
+    elif lineart:
         image = make_lineart(
             image_or_path,
             side=work_side,
@@ -212,6 +260,16 @@ def render_ascii(
             line_threshold=line_threshold,
             line_width=line_width,
         )
+    if mode == "pencil-magic":
+        return ascii_magic_to_ascii(
+            image_or_path,
+            width,
+            height,
+            chars=chars,
+            pencil=True,
+            pencil_blur=10.0,
+            enhance_image=False,
+        )
     raise ValueError(f"unknown ASCII mode: {mode}")
 
 
@@ -230,6 +288,12 @@ def representation_description(mode: str, width: int, height: int) -> str:
         return (
             f"center-cropped to a square, simplified into monochrome line art, "
             f"then rendered by ASCII Magic as exactly {width} columns x {height} rows"
+        )
+    if mode == "pencil-magic":
+        return (
+            f"center-cropped to a square, transformed into a grayscale pencil sketch "
+            f"that preserves contours and soft shading, then rendered by ASCII Magic "
+            f"as exactly {width} columns x {height} rows"
         )
     raise ValueError(f"unknown ASCII mode: {mode}")
 

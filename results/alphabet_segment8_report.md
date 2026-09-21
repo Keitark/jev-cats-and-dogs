@@ -217,3 +217,26 @@ Comparison with the ideal-glyph prediction histogram:
 | Blank input | 0 | 0 | 0 | 0 | 0 | 0 | 26 |
 
 The blank control did not reproduce the ideal run's A/H/K-heavy prediction histogram. Instead, it produced a completely deterministic I prior. L and T were selected on their own ideal glyphs but never on blank input, which is consistent with some input-dependent signal; however, this control alone does not establish OCR ability.
+
+
+## Next control: pixel-shuffle spatial test
+
+The next control should preserve each ideal glyph's exact number of `#` cells while destroying their spatial arrangement.
+
+For each source letter A-Z:
+
+1. generate the ideal deterministic 32x32 `segment8` glyph;
+2. count the exact number of `#` cells;
+3. randomly redistribute exactly that many `#` cells over all 1024 positions;
+4. submit the shuffled bitmap with the same A-Z choice criteria.
+
+Run one deterministic shuffle per source letter, for 26 calls total.
+
+This is not ordinary OCR accuracy because the shuffled bitmap is no longer a valid rendering of the source letter. The primary measurements are:
+
+- source-letter retention: predicted letter == source letter;
+- `p(source letter)`;
+- prediction histogram;
+- especially the change for H, L, and T relative to their ideal-glyph probabilities.
+
+The control isolates spatial arrangement from simple ink-count statistics. If H/L/T probabilities collapse after shuffling while the number of `#` cells is exactly preserved, that supports the interpretation that Jev is using some positional/spatial information rather than only total ink amount.
